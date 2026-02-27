@@ -3183,6 +3183,7 @@ const locale = {
   'quickTrade.side': 'Side',
   'quickTrade.posSize': 'Size',
   'quickTrade.entryPrice': 'Entry Price',
+  'quickTrade.markPrice': 'Mark Price',
   'quickTrade.unrealizedPnl': 'Unrealized PnL',
   'quickTrade.closePosition': 'Close Position',
   'quickTrade.recentTrades': 'Recent Trades',

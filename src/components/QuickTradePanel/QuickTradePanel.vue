@@ -213,6 +213,14 @@
           <span>{{ $t('quickTrade.entryPrice') }}</span>
           <span>${{ formatPrice(currentPosition.entry_price) }}</span>
         </div>
+        <div class="qt-pos-row" v-if="currentPosition.mark_price">
+          <span>{{ $t('quickTrade.markPrice') }}</span>
+          <span>${{ formatPrice(currentPosition.mark_price) }}</span>
+        </div>
+        <div class="qt-pos-row" v-if="currentPosition.leverage && currentPosition.leverage > 1">
+          <span>{{ $t('quickTrade.leverage') }}</span>
+          <span>{{ currentPosition.leverage }}x</span>
+        </div>
         <div class="qt-pos-row">
           <span>{{ $t('quickTrade.unrealizedPnl') }}</span>
           <span :class="currentPosition.unrealized_pnl >= 0 ? 'qt-green' : 'qt-red'">
@@ -263,7 +271,7 @@
 <script>
 import { mapState } from 'vuex'
 import { listExchangeCredentials } from '@/api/credentials'
-import { placeQuickOrder, getQuickTradeBalance, getQuickTradePosition, getQuickTradeHistory } from '@/api/quick-trade'
+import { placeQuickOrder, getQuickTradeBalance, getQuickTradePosition, getQuickTradeHistory, closeQuickTradePosition } from '@/api/quick-trade'
 
 export default {
   name: 'QuickTradePanel',
@@ -457,9 +465,16 @@ export default {
         if (res.code === 1) {
           this.$message.success(this.$t('quickTrade.orderSuccess'))
           this.$emit('order-success', res.data)
-          this.loadBalance()
-          this.loadPosition()
-          this.loadHistory()
+          // Reload all data after successful order
+          await this.loadBalance()
+          await this.loadPosition() // Reload position to show new position details
+          await this.loadHistory()
+          // If order was successful and we have a position, show success message with position info
+          if (res.data && res.data.exchange_order_id) {
+            setTimeout(() => {
+              this.loadPosition() // Double-check position after a short delay
+            }, 2000)
+          }
         } else {
           this.$message.error(res.msg || this.$t('quickTrade.orderFailed'))
         }
@@ -473,23 +488,20 @@ export default {
       if (!this.currentPosition || !this.selectedCredentialId) return
       this.closingPosition = true
       try {
-        // Close = reverse order with same size
-        const closeSide = this.currentPosition.side === 'long' ? 'sell' : 'buy'
+        // Use the new close-position API
         const payload = {
           credential_id: this.selectedCredentialId,
           symbol: this.symbol,
-          side: closeSide,
-          order_type: 'market',
-          amount: this.currentPosition.size,
-          leverage: this.leverage,
           market_type: this.marketType,
+          size: 0, // 0 means close full position
           source: 'manual'
         }
-        const res = await placeQuickOrder(payload)
+        const res = await closeQuickTradePosition(payload)
         if (res.code === 1) {
           this.$message.success(this.$t('quickTrade.positionClosed'))
           this.currentPosition = null
           this.loadBalance()
+          this.loadPosition() // Reload position to check if fully closed
           this.loadHistory()
         } else {
           this.$message.error(res.msg || this.$t('quickTrade.orderFailed'))

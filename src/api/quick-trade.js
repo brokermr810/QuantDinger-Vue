@@ -35,3 +35,12 @@ export function getQuickTradeHistory (params) {
     params
   })
 }
+
+/** Close an existing position */
+export function closeQuickTradePosition (data) {
+  return request({
+    url: '/api/quick-trade/close-position',
+    method: 'post',
+    data
+  })
+}

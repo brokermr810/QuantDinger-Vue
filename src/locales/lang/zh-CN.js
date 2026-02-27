@@ -3037,6 +3037,7 @@ const locale = {
   'quickTrade.side': '方向',
   'quickTrade.posSize': '持仓数量',
   'quickTrade.entryPrice': '开仓价格',
+  'quickTrade.markPrice': '标记价格',
   'quickTrade.unrealizedPnl': '未实现盈亏',
   'quickTrade.closePosition': '一键平仓',
   'quickTrade.recentTrades': '最近交易',
