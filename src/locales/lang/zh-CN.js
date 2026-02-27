@@ -3040,6 +3040,8 @@ const locale = {
   'quickTrade.markPrice': '标记价格',
   'quickTrade.unrealizedPnl': '未实现盈亏',
   'quickTrade.closePosition': '一键平仓',
+  'quickTrade.noPosition': '暂无持仓',
+  'quickTrade.noPositionHint': '当前交易对暂无持仓',
   'quickTrade.recentTrades': '最近交易',
   'quickTrade.orderSuccess': '下单成功！',
   'quickTrade.orderFailed': '下单失败',

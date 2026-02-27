@@ -3186,6 +3186,8 @@ const locale = {
   'quickTrade.markPrice': 'Mark Price',
   'quickTrade.unrealizedPnl': 'Unrealized PnL',
   'quickTrade.closePosition': 'Close Position',
+  'quickTrade.noPosition': 'No Position',
+  'quickTrade.noPositionHint': 'No position for current trading pair',
   'quickTrade.recentTrades': 'Recent Trades',
   'quickTrade.orderSuccess': 'Order placed successfully!',
   'quickTrade.orderFailed': 'Order failed',

@@ -194,11 +194,11 @@
     </div>
 
     <!-- Current Position (if any) -->
-    <div class="qt-position-section" v-if="currentPosition">
+    <div class="qt-position-section">
       <div class="qt-section-header">
         <a-icon type="wallet" /> {{ $t('quickTrade.currentPosition') }}
       </div>
-      <div class="qt-position-card" :class="currentPosition.side">
+      <div v-if="currentPosition" class="qt-position-card" :class="currentPosition.side">
         <div class="qt-pos-row">
           <span>{{ $t('quickTrade.side') }}</span>
           <a-tag :color="currentPosition.side === 'long' ? '#52c41a' : '#f5222d'" size="small">
@@ -238,6 +238,13 @@
         >
           {{ $t('quickTrade.closePosition') }}
         </a-button>
+      </div>
+      <div v-else class="qt-position-empty">
+        <a-empty :description="$t('quickTrade.noPosition')" :image="false" style="padding: 20px 0;">
+          <template slot="description">
+            <span style="color: #999; font-size: 12px;">{{ $t('quickTrade.noPositionHint') }}</span>
+          </template>
+        </a-empty>
       </div>
     </div>
 
@@ -348,6 +355,18 @@ export default {
         this.stopPolling()
       }
     },
+    symbol (val) {
+      // Reload position when symbol changes
+      if (val && this.selectedCredentialId) {
+        this.loadPosition()
+      }
+    },
+    selectedCredentialId (val) {
+      // Reload position when credential changes
+      if (val && this.symbol) {
+        this.loadPosition()
+      }
+    },
     presetSide (val) {
       if (val) this.side = val
     },
@@ -366,6 +385,10 @@ export default {
         this.limitPrice = this.presetPrice
       }
       await this.loadCredentials()
+      // Load position if credential and symbol are already available
+      if (this.selectedCredentialId && this.symbol) {
+        await this.loadPosition()
+      }
       this.loadHistory()
       this.startPolling()
     },
@@ -395,8 +418,8 @@ export default {
     },
     async onCredentialChange (credId) {
       this.selectedCredentialId = credId
-      this.loadBalance()
-      this.loadPosition()
+      await this.loadBalance()
+      await this.loadPosition()
     },
     async loadBalance () {
       if (!this.selectedCredentialId) return
@@ -413,21 +436,48 @@ export default {
       }
     },
     async loadPosition () {
-      if (!this.selectedCredentialId || !this.symbol) return
+      if (!this.selectedCredentialId || !this.symbol) {
+        console.log('loadPosition skipped:', { credentialId: this.selectedCredentialId, symbol: this.symbol })
+        return
+      }
       try {
+        console.log('Loading position:', { credential_id: this.selectedCredentialId, symbol: this.symbol, market_type: this.marketType })
         const res = await getQuickTradePosition({
           credential_id: this.selectedCredentialId,
           symbol: this.symbol,
           market_type: this.marketType
         })
+        console.log('Position response:', res)
         if (res.code === 1 && res.data && res.data.positions && res.data.positions.length > 0) {
           this.currentPosition = res.data.positions[0]
+          console.log('Position loaded:', this.currentPosition)
+          return true // Return true if position found
         } else {
           this.currentPosition = null
+          console.log('No position found')
+          return false // Return false if no position
         }
       } catch (e) {
-        console.warn('loadPosition error:', e)
+        console.error('loadPosition error:', e)
+        this.currentPosition = null
+        return false
       }
+    },
+    async loadPositionWithRetry (maxRetries = 3, delayMs = 2000) {
+      // Try to load position immediately
+      let found = await this.loadPosition()
+      if (found) return
+      
+      // If not found, retry with delay (exchange may need time to update)
+      for (let i = 0; i < maxRetries; i++) {
+        await new Promise(resolve => setTimeout(resolve, delayMs))
+        found = await this.loadPosition()
+        if (found) {
+          console.log(`Position found after ${i + 1} retry(ies)`)
+          return
+        }
+      }
+      console.log('Position not found after all retries')
     },
     async loadHistory () {
       try {
@@ -463,18 +513,15 @@ export default {
         }
         const res = await placeQuickOrder(payload)
         if (res.code === 1) {
-          this.$message.success(this.$t('quickTrade.orderSuccess'))
+          // Emit event for parent component (parent will show success message)
           this.$emit('order-success', res.data)
+          
           // Reload all data after successful order
           await this.loadBalance()
-          await this.loadPosition() // Reload position to show new position details
           await this.loadHistory()
-          // If order was successful and we have a position, show success message with position info
-          if (res.data && res.data.exchange_order_id) {
-            setTimeout(() => {
-              this.loadPosition() // Double-check position after a short delay
-            }, 2000)
-          }
+          
+          // Load position with retry mechanism (exchange may need time to update)
+          await this.loadPositionWithRetry()
         } else {
           this.$message.error(res.msg || this.$t('quickTrade.orderFailed'))
         }
@@ -499,10 +546,15 @@ export default {
         const res = await closeQuickTradePosition(payload)
         if (res.code === 1) {
           this.$message.success(this.$t('quickTrade.positionClosed'))
+          // Reload all data after closing position
+          await this.loadBalance()
+          await this.loadHistory()
+          // Clear position immediately, then verify after delay
           this.currentPosition = null
-          this.loadBalance()
-          this.loadPosition() // Reload position to check if fully closed
-          this.loadHistory()
+          // Verify position is closed after a delay (exchange may need time to update)
+          setTimeout(async () => {
+            await this.loadPosition()
+          }, 2000)
         } else {
           this.$message.error(res.msg || this.$t('quickTrade.orderFailed'))
         }
@@ -757,6 +809,14 @@ export default {
     padding: 2px 0;
     span:first-child { color: #999; }
   }
+}
+
+.qt-position-empty {
+  background: #fafafa;
+  border-radius: 8px;
+  padding: 20px 12px;
+  text-align: center;
+  border: 1px dashed #d9d9d9;
 }
 
 .qt-green { color: #52c41a !important; }
