@@ -441,6 +441,7 @@ export default {
       display: flex;
       align-items: center;
       gap: 8px;
+      color: rgba(0, 0, 0, 0.85);
     }
     .page-desc {
       margin: 6px 0 0;
@@ -467,16 +468,35 @@ export default {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
     margin-top: 12px;
     &.highlight { border: 1px solid rgba(24, 144, 255, 0.35); }
-    .plan-title { font-weight: 700; font-size: 16px; }
-    .plan-price {
-      margin-top: 10px; font-size: 28px; font-weight: 800;
-      .plan-unit { font-size: 12px; font-weight: 500; color: rgba(0, 0, 0, 0.45); margin-left: 6px; }
+    .plan-title {
+      font-weight: 700;
+      font-size: 16px;
+      color: rgba(0, 0, 0, 0.85);
     }
-    .plan-benefit { margin: 10px 0 16px; color: rgba(0, 0, 0, 0.65); font-weight: 600; }
+    .plan-price {
+      margin-top: 10px;
+      font-size: 28px;
+      font-weight: 800;
+      color: rgba(0, 0, 0, 0.85);
+      .plan-unit {
+        font-size: 12px;
+        font-weight: 500;
+        color: rgba(0, 0, 0, 0.45);
+        margin-left: 6px;
+      }
+    }
+    .plan-benefit {
+      margin: 10px 0 16px;
+      color: rgba(0, 0, 0, 0.65);
+      font-weight: 600;
+    }
   }
 
   &.theme-dark {
-    .page-header .page-desc { color: rgba(255, 255, 255, 0.55); }
+    .page-header {
+      .page-title { color: rgba(255, 255, 255, 0.9); }
+      .page-desc { color: rgba(255, 255, 255, 0.55); }
+    }
     .snapshot-card {
       background: #161b22;
       .snap-item {
@@ -488,7 +508,11 @@ export default {
     .plan-card {
       background: #161b22;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-      .plan-price .plan-unit { color: rgba(255, 255, 255, 0.55); }
+      .plan-title { color: rgba(255, 255, 255, 0.9); }
+      .plan-price {
+        color: rgba(255, 255, 255, 0.9);
+        .plan-unit { color: rgba(255, 255, 255, 0.55); }
+      }
       .plan-benefit { color: rgba(255, 255, 255, 0.7); }
     }
   }

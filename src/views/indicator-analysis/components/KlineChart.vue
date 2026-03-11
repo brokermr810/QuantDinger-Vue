@@ -179,7 +179,8 @@ export default {
       { name: 'parallelStraightLine', title: proxy.$t('dashboard.indicator.drawing.parallelLine'), icon: 'menu' },
       { name: 'priceLine', title: proxy.$t('dashboard.indicator.drawing.priceLine'), icon: 'dollar' },
       { name: 'priceChannelLine', title: proxy.$t('dashboard.indicator.drawing.priceChannel'), icon: 'border' },
-      { name: 'fibonacciLine', title: proxy.$t('dashboard.indicator.drawing.fibonacciLine'), icon: 'rise' }
+      { name: 'fibonacciLine', title: proxy.$t('dashboard.indicator.drawing.fibonacciLine'), icon: 'rise' },
+      { name: 'measure', title: proxy.$t('dashboard.indicator.drawing.measure'), icon: 'drag' }
     ])
 
     // 指标按钮定义
@@ -221,7 +222,8 @@ export default {
         parallelStraightLine: 'parallelStraightLine',
         priceLine: 'priceLine',
         priceChannelLine: 'priceChannelLine',
-        fibonacciLine: 'fibonacciLine'
+        fibonacciLine: 'fibonacciLine',
+        measure: 'priceRangeMeasure'
       }
 
       const overlayName = toolMap[toolName] || toolName
@@ -245,24 +247,47 @@ export default {
       activeDrawingTool.value = toolName
 
       try {
-        // 准备覆盖物配置
-        const overlayConfig = {
-          name: overlayName,
-          lock: false, // 允许编辑
-          extendData: {
-            isDrawing: true // 标记为正在绘制
+        // 对于自定义覆盖物（如 priceRangeMeasure），需要使用 overrideOverlay 来进入绘制模式
+        // 对于内置覆盖物，使用 createOverlay
+        // signalTag 不应该通过绘制工具创建，所以不包含在这里
+        const customOverlays = ['priceRangeMeasure']
+
+        if (customOverlays.includes(overlayName)) {
+          // 自定义覆盖物：使用 overrideOverlay 进入绘制模式
+          if (typeof chartRef.value.overrideOverlay === 'function') {
+            chartRef.value.overrideOverlay({
+              name: overlayName,
+              lock: false
+            })
+            // overrideOverlay 不会返回 ID，需要等待用户绘制完成后通过 onOverlayCreated 事件获取
+            // 这里先标记为已激活，等待绘制完成
+          } else {
+            console.warn(`overrideOverlay not available for ${overlayName}`)
+            activeDrawingTool.value = null
+            return
+          }
+        } else {
+          // 内置覆盖物：使用 createOverlay
+          const overlayConfig = {
+            name: overlayName,
+            lock: false, // 允许编辑
+            extendData: {
+              isDrawing: true // 标记为正在绘制
+            }
+          }
+
+          // 调用 createOverlay 且不传 points，库会自动进入绘制模式
+          const overlayId = chartRef.value.createOverlay(overlayConfig)
+
+          if (overlayId) {
+            addedDrawingOverlayIds.value.push(overlayId)
+          } else {
+            console.warn(`Failed to create overlay: ${overlayName}. Make sure the overlay is registered.`)
+            activeDrawingTool.value = null
           }
         }
-
-        // 调用 createOverlay 且不传 points，库会自动进入绘制模式
-        const overlayId = chartRef.value.createOverlay(overlayConfig)
-
-        if (overlayId) {
-          addedDrawingOverlayIds.value.push(overlayId)
-        } else {
-          activeDrawingTool.value = null
-        }
       } catch (err) {
+        console.error(`Error selecting drawing tool ${toolName} (${overlayName}):`, err)
         activeDrawingTool.value = null
       }
     }
@@ -1377,6 +1402,181 @@ registerOverlay({
       }
     })
 
+    // ========== 注册价格测量工具 Overlay (Price Range Measure) ==========
+    // 类似 TradingView 的测量工具，显示两点之间的价格变化和涨跌幅
+    registerOverlay({
+      name: 'priceRangeMeasure',
+      totalStep: 2, // 需要两个点：起点和终点
+      lock: false, // 允许编辑
+      needDefaultPointFigure: false,
+      needDefaultXAxisFigure: false,
+      needDefaultYAxisFigure: false,
+
+      createPointFigures: ({ coordinates, overlay, ctx }) => {
+        if (!coordinates[0] || !coordinates[1]) return []
+
+        const startPoint = overlay.points[0]
+        const endPoint = overlay.points[1]
+
+        if (!startPoint || !endPoint) return []
+
+        // 获取起点和终点的价格
+        const startPrice = startPoint.value
+        const endPrice = endPoint.value
+        const priceChange = endPrice - startPrice
+        const percentChange = (priceChange / startPrice) * 100
+
+        // 计算时间跨度（通过时间戳差值）
+        const startTimestamp = startPoint.timestamp
+        const endTimestamp = endPoint.timestamp
+        const timeDiff = Math.abs(endTimestamp - startTimestamp)
+
+        // 格式化时间跨度
+        let timeSpan = ''
+        const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24))
+        const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+        const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60))
+        const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000)
+
+        if (days > 0) {
+          timeSpan = `${days}天${hours > 0 ? hours + '小时' : ''}`
+        } else if (hours > 0) {
+          timeSpan = `${hours}小时${minutes > 0 ? minutes + '分钟' : ''}`
+        } else if (minutes > 0) {
+          timeSpan = `${minutes}分钟`
+        } else {
+          timeSpan = `${seconds}秒`
+        }
+
+        // 尝试从图表实例获取数据来计算K线数量
+        let barCount = 0
+        try {
+          if (ctx && ctx.chart) {
+            const chartData = ctx.chart.getData()
+            if (chartData && Array.isArray(chartData) && chartData.length > 0) {
+              const startIndex = chartData.findIndex(item => Math.abs(item.timestamp - startTimestamp) < 1000)
+              const endIndex = chartData.findIndex(item => Math.abs(item.timestamp - endTimestamp) < 1000)
+              if (startIndex >= 0 && endIndex >= 0) {
+                barCount = Math.abs(endIndex - startIndex)
+              }
+            }
+          }
+        } catch (e) {
+          // 如果无法获取数据，忽略错误
+        }
+
+        // 格式化显示文本
+        const percentStr = percentChange >= 0
+          ? `+${percentChange.toFixed(2)}%`
+          : `${percentChange.toFixed(2)}%`
+        const priceChangeStr = priceChange >= 0
+          ? `+${priceChange.toFixed(2)}`
+          : `${priceChange.toFixed(2)}`
+
+        // 构建显示文本
+        let displayText = `${percentStr}  ${priceChangeStr}`
+        if (barCount > 0) {
+          displayText += `  (${barCount}根`
+          if (timeSpan) {
+            displayText += ` / ${timeSpan}`
+          }
+          displayText += ')'
+        } else if (timeSpan) {
+          displayText += `  (${timeSpan})`
+        }
+
+        // 根据涨跌设置颜色
+        const isUp = priceChange >= 0
+        const lineColor = isUp ? '#0ecb81' : '#f6465d'
+        const textColor = isUp ? '#0ecb81' : '#f6465d'
+        const bgColor = isUp ? 'rgba(14, 203, 129, 0.1)' : 'rgba(246, 70, 93, 0.1)'
+
+        const x1 = coordinates[0].x
+        const y1 = coordinates[0].y
+        const x2 = coordinates[1].x
+        const y2 = coordinates[1].y
+
+        // 计算文本位置（在线的中点上方）
+        const midX = (x1 + x2) / 2
+        const midY = (y1 + y2) / 2
+        const textOffsetY = -20 // 文本在线上方
+
+        // 估算文本宽度
+        const fontSize = 12
+        const textWidth = displayText.length * 7 + 16 // 简单估算
+        const textHeight = fontSize + 8
+
+        return [
+          // 1. 连接线（带箭头）
+          {
+            type: 'line',
+            attrs: {
+              coordinates: [
+                { x: x1, y: y1 },
+                { x: x2, y: y2 }
+              ]
+            },
+            styles: {
+              style: 'stroke',
+              color: lineColor,
+              size: 2,
+              dashedValue: [4, 4] // 虚线样式
+            },
+            ignoreEvent: false
+          },
+          // 2. 起点标记（小圆点）
+          {
+            type: 'circle',
+            attrs: { x: x1, y: y1, r: 4 },
+            styles: { style: 'fill', color: lineColor },
+            ignoreEvent: false
+          },
+          // 3. 终点标记（小圆点）
+          {
+            type: 'circle',
+            attrs: { x: x2, y: y2, r: 4 },
+            styles: { style: 'fill', color: lineColor },
+            ignoreEvent: false
+          },
+          // 4. 文本背景框
+          {
+            type: 'rect',
+            attrs: {
+              x: midX - textWidth / 2,
+              y: midY + textOffsetY - textHeight / 2,
+              width: textWidth,
+              height: textHeight,
+              r: 4
+            },
+            styles: {
+              style: 'fill',
+              color: bgColor,
+              borderSize: 1,
+              borderColor: lineColor
+            },
+            ignoreEvent: false
+          },
+          // 5. 文本
+          {
+            type: 'text',
+            attrs: {
+              x: midX,
+              y: midY + textOffsetY,
+              text: displayText,
+              align: 'center',
+              baseline: 'middle'
+            },
+            styles: {
+              color: textColor,
+              size: fontSize,
+              weight: 'bold'
+            },
+            ignoreEvent: false
+          }
+        ]
+      }
+    })
+
     // --- 数据加载相关函数 ---
     // 格式化数据为 KLineChart 格式（timestamp 需要是毫秒）
     const formatKlineData = (data) => {
@@ -2035,15 +2235,33 @@ registerOverlay({
           chartRef.value.subscribeAction('onOverlayCreated', (overlay) => {
             // 如果是通过画线工具创建的覆盖物，记录ID并退出绘制模式
             if (activeDrawingTool.value && overlay && overlay.id) {
-              addedDrawingOverlayIds.value.push(overlay.id)
-              // 重置激活状态
-              activeDrawingTool.value = null
-              // 退出绘制模式
-              try {
-                if (typeof chartRef.value.overrideOverlay === 'function') {
-                  chartRef.value.overrideOverlay(null)
+              // 检查覆盖物名称是否匹配当前激活的工具
+              const toolMap = {
+                line: 'segment',
+                horizontalLine: 'horizontalStraightLine',
+                verticalLine: 'verticalStraightLine',
+                ray: 'rayLine',
+                straightLine: 'straightLine',
+                parallelStraightLine: 'parallelStraightLine',
+                priceLine: 'priceLine',
+                priceChannelLine: 'priceChannelLine',
+                fibonacciLine: 'fibonacciLine',
+                measure: 'priceRangeMeasure'
+              }
+              const expectedOverlayName = toolMap[activeDrawingTool.value]
+
+              // 如果覆盖物名称匹配，或者是通过 overrideOverlay 创建的自定义覆盖物
+              if (!overlay.name || overlay.name === expectedOverlayName || expectedOverlayName === 'priceRangeMeasure') {
+                addedDrawingOverlayIds.value.push(overlay.id)
+                // 重置激活状态
+                activeDrawingTool.value = null
+                // 退出绘制模式
+                try {
+                  if (typeof chartRef.value.overrideOverlay === 'function') {
+                    chartRef.value.overrideOverlay(null)
+                  }
+                } catch (e) {
                 }
-              } catch (e) {
               }
             }
           })

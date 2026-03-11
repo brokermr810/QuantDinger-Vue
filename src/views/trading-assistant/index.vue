@@ -1176,7 +1176,10 @@
                     option-filter-prop="children"
                     :loading="loadingExchangeCredentials"
                     @change="handleCredentialSelectChange">
-                    <a-select-option v-for="cred in exchangeCredentials" :key="cred.id" :value="cred.id">
+                    <a-select-option
+                      v-for="cred in filteredExchangeCredentials"
+                      :key="cred.id"
+                      :value="cred.id">
                       {{ formatCredentialLabel(cred) }}
                     </a-select-option>
                   </a-select>
@@ -1184,17 +1187,6 @@
                     <router-link to="/profile?tab=exchange">
                       <a-icon type="setting" style="margin-right: 4px;" />{{ $t('profile.exchange.goToManage') }}
                     </router-link>
-                  </div>
-                </a-form-item>
-
-                <!-- Test Connection Button -->
-                <a-form-item>
-                  <a-button type="default" :loading="testing" @click="handleTestConnection" block>
-                    <a-icon type="wallet" />
-                    {{ $t('trading-assistant.form.testConnection') }}
-                  </a-button>
-                  <div v-if="testResult" class="test-result" :class="testResult.success ? 'success' : 'error'">
-                    {{ testResult.message }}
                   </div>
                 </a-form-item>
               </div>
@@ -1330,7 +1322,7 @@
 </template>
 
 <script>
-import { getStrategyList, startStrategy, stopStrategy, deleteStrategy, updateStrategy, createStrategy, testExchangeConnection, getStrategyEquityCurve, getStrategyPositions, batchCreateStrategies, batchStartStrategies, batchStopStrategies, batchDeleteStrategies } from '@/api/strategy'
+import { getStrategyList, startStrategy, stopStrategy, deleteStrategy, updateStrategy, createStrategy, getStrategyEquityCurve, getStrategyPositions, batchCreateStrategies, batchStartStrategies, batchStopStrategies, batchDeleteStrategies } from '@/api/strategy'
 import { getWatchlist, addWatchlist, searchSymbols, getHotSymbols } from '@/api/market'
 import { listExchangeCredentials } from '@/api/credentials'
 import { getNotificationSettings } from '@/api/user'
@@ -1418,6 +1410,17 @@ export default {
     // Check if current market uses any broker (not crypto exchange)
     isBrokerMarket () {
       return this.isIBKRMarket || this.isMT5Market
+    },
+    // Filter exchange credentials based on market category
+    filteredExchangeCredentials () {
+      if (!this.exchangeCredentials || !Array.isArray(this.exchangeCredentials)) {
+        return []
+      }
+
+      // Filter credentials based on market category
+      return this.exchangeCredentials.filter(cred => {
+        return this.isCredentialCompatible(cred)
+      })
     },
     // 预处理交易所列表，包含显示名称，提升性能
     formattedExchangeOptions () {
@@ -1720,8 +1723,6 @@ export default {
       exchangeOptions: EXCHANGE_OPTIONS,
       currentExchangeId: '',
       currentBrokerId: 'ibkr',
-      testing: false,
-      testResult: null,
       connectionTestResult: null,
       indicatorsLoaded: false, // 标记指标是否已加载
       editingStrategy: null, // 正在编辑的策略
@@ -2216,12 +2217,37 @@ export default {
       const hint = cred.api_key_hint || ''
       return name ? `${ex.toUpperCase()} - ${name} (${hint})` : `${ex.toUpperCase()} (${hint})`
     },
+    // Check if credential is compatible with current market category
+    isCredentialCompatible (cred) {
+      if (!cred || !cred.exchange_id) return true
+
+      const exchangeId = (cred.exchange_id || '').toLowerCase()
+      const marketCategory = this.selectedMarketCategory || 'Crypto'
+
+      // MT5 can only be used for Forex
+      if (exchangeId === 'mt5') {
+        return marketCategory === 'Forex'
+      }
+
+      // IBKR can only be used for USStock
+      if (exchangeId === 'ibkr') {
+        return marketCategory === 'USStock'
+      }
+
+      // Crypto exchanges can only be used for Crypto
+      const cryptoExchanges = ['binance', 'okx', 'bitget', 'bybit', 'coinbaseexchange', 'kraken', 'kucoin', 'gate', 'bitfinex', 'deepcoin']
+      if (cryptoExchanges.includes(exchangeId)) {
+        return marketCategory === 'Crypto'
+      }
+
+      // Default: allow if no specific restriction
+      return true
+    },
     async handleCredentialSelectChange (credentialId) {
       // Selecting a saved credential updates the exchange_id UI state.
       // API keys are NOT stored in form fields — they live only in the credentials vault.
       if (!credentialId) {
         this.currentExchangeId = ''
-        this.testResult = null
         this.connectionTestResult = null
         return
       }
@@ -2229,11 +2255,49 @@ export default {
       // Find credential in local list to get exchange_id for UI display
       const localCred = this.exchangeCredentials.find(c => String(c.id) === String(credentialId))
       if (localCred) {
+        const exchangeId = (localCred.exchange_id || '').toLowerCase()
+
+        // Validate MT5 can only be used for Forex
+        if (exchangeId === 'mt5' && this.selectedMarketCategory !== 'Forex') {
+          this.$message.error(this.$t('trading-assistant.validation.mt5OnlyForForex'))
+          // Clear the selection
+          try {
+            this.form && this.form.setFieldsValue && this.form.setFieldsValue({ credential_id: undefined })
+          } catch (e) { }
+          this.currentExchangeId = ''
+          this.connectionTestResult = null
+          return
+        }
+
+        // Validate IBKR can only be used for USStock
+        if (exchangeId === 'ibkr' && this.selectedMarketCategory !== 'USStock') {
+          this.$message.error(this.$t('trading-assistant.validation.ibkrOnlyForUSStock'))
+          // Clear the selection
+          try {
+            this.form && this.form.setFieldsValue && this.form.setFieldsValue({ credential_id: undefined })
+          } catch (e) { }
+          this.currentExchangeId = ''
+          this.connectionTestResult = null
+          return
+        }
+
+        // Validate crypto exchanges can only be used for Crypto
+        const cryptoExchanges = ['binance', 'okx', 'bitget', 'bybit', 'coinbaseexchange', 'kraken', 'kucoin', 'gate', 'bitfinex']
+        if (cryptoExchanges.includes(exchangeId) && this.selectedMarketCategory !== 'Crypto') {
+          this.$message.error(this.$t('trading-assistant.validation.cryptoExchangeOnlyForCrypto'))
+          // Clear the selection
+          try {
+            this.form && this.form.setFieldsValue && this.form.setFieldsValue({ credential_id: undefined })
+          } catch (e) { }
+          this.currentExchangeId = ''
+          this.connectionTestResult = null
+          return
+        }
+
         this.currentExchangeId = localCred.exchange_id || ''
       }
 
       // Reset test results when credential changes
-      this.testResult = null
       this.connectionTestResult = null
     },
     onSaveCredentialChange (e) {
@@ -2321,7 +2385,6 @@ export default {
       this.currentExchangeId = ''
       this.currentBrokerId = 'ibkr'
       this.selectedIndicator = null
-      this.testResult = null
       this.connectionTestResult = null
       this.executionModeUi = 'signal'
       this.notifyChannelsUi = ['browser']
@@ -2365,7 +2428,6 @@ export default {
       this.currentStep = 0
       this.currentExchangeId = ''
       this.selectedIndicator = null
-      this.testResult = null
       this.connectionTestResult = null
       this.form.resetFields()
       this.backtestCollapseKeys = ['risk']
@@ -2726,7 +2788,6 @@ export default {
       this.currentStep = 0
       this.currentExchangeId = ''
       this.selectedIndicator = null
-      this.testResult = null
       this.connectionTestResult = null
       this.indicatorsLoaded = false
       this.availableIndicators = []
@@ -3182,8 +3243,7 @@ export default {
       return colorMap[exchangeId] || 'default'
     },
     handleApiConfigChange () {
-      // 当API配置字段变化时，清空测试结果，需要重新测试
-      this.testResult = null
+      // 当API配置字段变化时，清空测试结果
       this.connectionTestResult = null
     },
     getModalPopupContainer () {
@@ -3192,17 +3252,14 @@ export default {
     },
     handleBrokerSelectChange (value) {
       this.currentBrokerId = value || 'ibkr'
-      this.testResult = null
       this.connectionTestResult = null
     },
     handleForexBrokerSelectChange (value) {
       this.currentBrokerId = value || 'mt5'
-      this.testResult = null
       this.connectionTestResult = null
     },
     handleExchangeSelectChange (value) {
       this.currentExchangeId = value || ''
-      this.testResult = null
       this.connectionTestResult = null
 
       // If exchange_id is set programmatically (e.g. by selecting a saved credential),
@@ -3290,158 +3347,6 @@ export default {
         'passphrase': this.$t('trading-assistant.placeholders.inputPassphrase')
       }
       return fieldLabels[fieldType] || this.$t('trading-assistant.placeholders.inputApiKey')
-    },
-    async handleTestConnection () {
-      this.testResult = null
-      this.testing = true
-
-      try {
-        // IBKR uses different connection test (host/port instead of api_key/secret)
-        if (this.isIBKRMarket) {
-          const values = this.form.getFieldsValue(['ibkr_host', 'ibkr_port', 'ibkr_client_id', 'ibkr_account'])
-          const host = values.ibkr_host || '127.0.0.1'
-          const port = values.ibkr_port || 7497
-          const clientId = values.ibkr_client_id || 1
-          const account = values.ibkr_account || ''
-
-          try {
-            // Call IBKR connect API
-            const res = await this.$http.post('/api/ibkr/connect', {
-              host: host,
-              port: parseInt(port),
-              clientId: parseInt(clientId),
-              account: account
-            })
-
-            // Note: request.js interceptor returns response.data directly, so res is the JSON object
-            if (res && res.success) {
-              this.testResult = {
-                success: true,
-                message: this.$t('trading-assistant.exchange.ibkrConnectionSuccess')
-              }
-              this.$message.success(this.$t('trading-assistant.exchange.ibkrConnectionSuccess'))
-            } else {
-              this.testResult = {
-                success: false,
-                message: res?.error || this.$t('trading-assistant.exchange.ibkrConnectionFailed')
-              }
-              this.$message.error(this.testResult.message)
-            }
-          } catch (error) {
-            const baseError = error.response?.data?.error || error?.error || error.message || this.$t('trading-assistant.exchange.ibkrConnectionFailed')
-            this.testResult = {
-              success: false,
-              message: `${baseError} - ${this.$t('trading-assistant.exchange.checkLocalDeployment')}`
-            }
-            this.$message.error(this.testResult.message)
-          } finally {
-            this.testing = false
-          }
-          return
-        }
-
-        // MT5 uses different connection test (server/login/password)
-        if (this.isMT5Market) {
-          const values = this.form.getFieldsValue(['mt5_server', 'mt5_login', 'mt5_password', 'mt5_terminal_path'])
-          const server = values.mt5_server || ''
-          const login = values.mt5_login || ''
-          const password = values.mt5_password || ''
-          const terminalPath = values.mt5_terminal_path || ''
-
-          if (!server || !login || !password) {
-            this.testResult = {
-              success: false,
-              message: this.$t('trading-assistant.exchange.fillComplete')
-            }
-            this.$message.error(this.testResult.message)
-            this.testing = false
-            return
-          }
-
-          try {
-            // Call MT5 connect API
-            const res = await this.$http.post('/api/mt5/connect', {
-              server: server,
-              login: parseInt(login),
-              password: password,
-              terminal_path: terminalPath
-            })
-
-            // Note: request.js interceptor returns response.data directly, so res is the JSON object
-            if (res && res.success) {
-              this.testResult = {
-                success: true,
-                message: this.$t('trading-assistant.exchange.mt5ConnectionSuccess')
-              }
-              this.$message.success(this.$t('trading-assistant.exchange.mt5ConnectionSuccess'))
-            } else {
-              this.testResult = {
-                success: false,
-                message: res?.error || this.$t('trading-assistant.exchange.mt5ConnectionFailed')
-              }
-              this.$message.error(this.testResult.message)
-            }
-          } catch (error) {
-            const baseError = error.response?.data?.error || error?.error || error.message || this.$t('trading-assistant.exchange.mt5ConnectionFailed')
-            this.testResult = {
-              success: false,
-              message: `${baseError} - ${this.$t('trading-assistant.exchange.checkLocalDeployment')}`
-            }
-            this.$message.error(this.testResult.message)
-          } finally {
-            this.testing = false
-          }
-          return
-        }
-
-        // Crypto exchanges: use saved credential for connection test.
-        // API keys are stored in qd_exchange_credentials, not in form fields.
-        const credentialId = this.form.getFieldValue('credential_id')
-        if (!credentialId) {
-          this.testing = false
-          this.$message.error(this.$t('profile.exchange.noCredentialHint'))
-          return
-        }
-
-        try {
-          const marketType = (this.form.getFieldValue('market_type') || 'swap')
-          // Send credential_id to backend; it will resolve the actual keys from the vault.
-          const exchangeConfig = {
-            credential_id: credentialId,
-            exchange_id: this.currentExchangeId || undefined,
-            market_type: String(marketType || 'swap')
-          }
-
-          const res = await testExchangeConnection(exchangeConfig)
-
-          this.testResult = {
-            success: res.code === 1,
-            message: res.msg || (res.code === 1 ? this.$t('trading-assistant.exchange.connectionSuccess') : this.$t('trading-assistant.exchange.connectionFailed'))
-          }
-          this.connectionTestResult = null
-
-          if (this.testResult.success) {
-            this.$message.success(this.$t('trading-assistant.exchange.connectionSuccess'))
-          } else {
-            this.$message.error(this.testResult.message || this.$t('trading-assistant.exchange.testFailed'))
-          }
-        } catch (error) {
-          this.testResult = {
-            success: false,
-            message: error.message || this.$t('trading-assistant.exchange.testFailed')
-          }
-          this.$message.error(this.testResult.message)
-        } finally {
-          this.testing = false
-        }
-      } catch (error) {
-        this.testResult = {
-          success: false,
-          message: this.$t('trading-assistant.exchange.testFailed')
-        }
-        this.$message.error(this.$t('trading-assistant.exchange.testFailed'))
-        this.testing = false
-      }
     },
     // 表单步骤控制
     handleNext () {
@@ -3542,18 +3447,17 @@ export default {
               return
             }
 
+            // Connection test should be done in personal center before creating strategy
+            // If using saved credential (credential_id), assume it was already tested in personal center
             if (isLive) {
-              const testResult = this.testResult
-              if (!testResult) {
-                this.$message.warning(this.$t('trading-assistant.validation.testConnectionRequired'))
+              const credentialId = values.credential_id
+              // If no credential_id, user should go to personal center to add and test credentials first
+              if (!credentialId) {
+                this.$message.warning(this.$t('trading-assistant.validation.credentialRequired'))
                 this.saving = false
                 return
               }
-              if (!testResult.success) {
-                this.$message.warning(this.$t('trading-assistant.validation.testConnectionFailed'))
-                this.saving = false
-                return
-              }
+              // If credential_id exists, assume it was already tested in personal center
             }
 
             // Use user's notification settings from profile for targets

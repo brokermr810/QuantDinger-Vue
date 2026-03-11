@@ -2071,6 +2071,217 @@ export default {
         }
       }
     }
+
+    // Tables in tabs (消费记录、交易所配置、邀请列表)
+    /deep/ .ant-table-wrapper {
+      .ant-table {
+        background: #1e222d;
+        color: #c9d1d9;
+      }
+
+      .ant-table-thead > tr > th {
+        background: #2a2e39;
+        color: #c9d1d9;
+        border-bottom-color: #30363d;
+      }
+
+      .ant-table-tbody > tr > td {
+        background: #1e222d;
+        color: #c9d1d9;
+        border-bottom-color: #30363d;
+      }
+
+      .ant-table-tbody > tr:hover > td {
+        background: #2a2e39;
+      }
+
+      .ant-table-placeholder {
+        background: #1e222d;
+        color: #8b949e;
+      }
+
+      // 表格内的所有文本元素
+      .ant-table-tbody > tr > td,
+      .ant-table-tbody > tr > td span,
+      .ant-table-tbody > tr > td div,
+      .ant-table-tbody > tr > td *:not(.ant-tag):not(.ant-btn) {
+        color: #c9d1d9;
+      }
+
+      // 金额颜色
+      .amount-positive {
+        color: #52c41a;
+      }
+
+      .amount-negative {
+        color: #f5222d;
+      }
+    }
+
+    // 表单样式（通知设置、交易所配置等）
+    .profile-form,
+    .password-form,
+    .notification-settings-form {
+      /deep/ .ant-form-item-label > label {
+        color: #c9d1d9;
+      }
+
+      /deep/ .ant-form-item-explain,
+      /deep/ .ant-form-item-extra {
+        color: #8b949e;
+      }
+
+      /deep/ .ant-input,
+      /deep/ .ant-input-password,
+      /deep/ .ant-select-selector,
+      /deep/ .ant-input-number {
+        background: #0d1117;
+        border-color: #30363d;
+        color: #c9d1d9;
+
+        &::placeholder {
+          color: #6e7681;
+        }
+      }
+
+      /deep/ .ant-select-selection-item,
+      /deep/ .ant-select-selection-placeholder {
+        color: #c9d1d9;
+      }
+
+      /deep/ .ant-checkbox-wrapper,
+      /deep/ .ant-radio-wrapper {
+        color: #c9d1d9;
+
+        span {
+          color: #c9d1d9;
+        }
+      }
+
+      /deep/ .ant-checkbox-checked .ant-checkbox-inner,
+      /deep/ .ant-radio-checked .ant-radio-inner {
+        background-color: @primary-color;
+        border-color: @primary-color;
+      }
+
+      // 提示文字
+      .email-hint,
+      .field-hint {
+        color: #8b949e;
+      }
+
+      .email-warning {
+        color: #f5222d;
+      }
+    }
+
+    // 通知设置表单
+    .notification-settings-form {
+      /deep/ .ant-alert {
+        background: #1e222d;
+        border-color: #30363d;
+        color: #c9d1d9;
+
+        .ant-alert-message {
+          color: #c9d1d9;
+        }
+
+        .ant-alert-description {
+          color: #8b949e;
+        }
+      }
+    }
+
+    // 交易所配置
+    .exchange-config-section {
+      .credential-hint {
+        color: #8b949e;
+      }
+    }
+
+    // 测试结果消息
+    .test-result-msg {
+      &.success {
+        color: #52c41a;
+      }
+      &.error {
+        color: #f5222d;
+      }
+    }
+
+    // 邀请列表中的用户信息
+    .referral-user-cell {
+      .user-info {
+        .nickname {
+          color: #c9d1d9;
+        }
+
+        .username {
+          color: #8b949e;
+        }
+      }
+    }
+
+    // 标签样式
+    /deep/ .ant-tag {
+      color: #c9d1d9;
+    }
+
+    // 分页样式
+    /deep/ .ant-pagination {
+      .ant-pagination-item {
+        background: #1e222d;
+        border-color: #30363d;
+
+        a {
+          color: #c9d1d9;
+        }
+
+        &:hover {
+          border-color: @primary-color;
+        }
+      }
+
+      .ant-pagination-item-active {
+        background: @primary-color;
+        border-color: @primary-color;
+
+        a {
+          color: #fff;
+        }
+      }
+
+      .ant-pagination-prev,
+      .ant-pagination-next {
+        .ant-pagination-item-link {
+          background: #1e222d;
+          border-color: #30363d;
+          color: #c9d1d9;
+        }
+      }
+
+      .ant-pagination-options {
+        .ant-select-selector {
+          background: #0d1117;
+          border-color: #30363d;
+          color: #c9d1d9;
+        }
+      }
+    }
+
+    // 按钮样式
+    /deep/ .ant-btn {
+      &.ant-btn-default {
+        background: #1e222d;
+        border-color: #30363d;
+        color: #c9d1d9;
+
+        &:hover {
+          border-color: @primary-color;
+          color: @primary-color;
+        }
+      }
+    }
   }
 }
 

@@ -1131,6 +1131,7 @@ const locale = {
 'dashboard.indicator.drawing.priceChannel': 'kênh giá',
 
 'dashboard.indicator.drawing.fibonacciLine': 'đường Fibonacci',
+'dashboard.indicator.drawing.measure': 'Đo lường',
 
 'dashboard.indicator.drawing.clearAll': 'xóa tất cả các đường đã vẽ',
 
@@ -2173,6 +2174,7 @@ const locale = {
 'trading-assistant.validation.exchangeConfigIncomplete': 'Vui lòng điền đầy đủ thông tin cấu hình sàn giao dịch',
 'trading-assistant.validation.testConnectionRequired': 'Vui lòng nhấp vào nút "Kiểm tra kết nối" và đảm bảo kết nối thành công',
 'trading-assistant.validation.testConnectionFailed': 'Kiểm tra kết nối thất bại, vui lòng kiểm tra cấu hình và thử lại',
+'trading-assistant.validation.credentialRequired': 'Vui lòng thêm và kiểm tra thông tin đăng nhập sàn giao dịch trong Trung tâm Cá nhân trước',
 
 'trading-assistant.validation.strategyNameRequired': 'Vui lòng nhập tên chiến lược',
 
