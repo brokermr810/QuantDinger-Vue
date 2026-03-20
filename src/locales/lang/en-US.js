@@ -2972,6 +2972,15 @@ const locale = {
   // Market Overview
   'fastAnalysis.marketOverview': 'Market Overview',
   'fastAnalysis.selectTip': 'Select a symbol from your watchlist to start AI analysis',
+  'fastAnalysis.analysisInProgress': 'An analysis is already running for this symbol. Please wait and try again.',
+  'fastAnalysis.analysisInProgressTitle': 'Analysis in progress',
+  'fastAnalysis.insufficientCredits': 'Insufficient credits',
+  'fastAnalysis.insufficientCreditsDetail': 'Insufficient credits: need {required}, you have {current}, short by {shortage}.',
+  'fastAnalysis.analysisCompleteWithCredits': 'Analysis complete. Remaining credits: {remaining}',
+  'fastAnalysis.consensusTitle': 'Multi-timeframe consensus',
+  'fastAnalysis.consensusDecision': 'Consensus',
+  'fastAnalysis.consensusScore': 'Composite score',
+  'fastAnalysis.consensusAgreement': 'Timeframe agreement',
 
   // ==================== AI Quant ====================
   'aiQuant.title': 'AI Quant',

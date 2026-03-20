@@ -57,7 +57,11 @@
 
     <!-- Error State -->
     <div v-else-if="error" class="error-container">
-      <a-result status="error" :title="$t('fastAnalysis.error')" :sub-title="error">
+      <a-result
+        :status="errorTone === 'warning' ? 'warning' : 'error'"
+        :title="errorTitle"
+        :sub-title="error"
+      >
         <template #extra>
           <a-button type="primary" @click="$emit('retry')">
             {{ $t('fastAnalysis.retry') }}
@@ -100,6 +104,26 @@
         </div>
         <div class="decision-summary">
           {{ result.summary }}
+        </div>
+        <div v-if="consensusBlock" class="consensus-strip">
+          <div class="consensus-strip-title">
+            <a-icon type="cluster" />
+            {{ $t('fastAnalysis.consensusTitle') }}
+          </div>
+          <div class="consensus-strip-metrics">
+            <span class="cm-item">
+              <em>{{ $t('fastAnalysis.consensusDecision') }}</em>
+              {{ consensusBlock.consensus_decision }}
+            </span>
+            <span class="cm-item">
+              <em>{{ $t('fastAnalysis.consensusScore') }}</em>
+              {{ formatConsensusNum(consensusBlock.consensus_score) }}
+            </span>
+            <span v-if="consensusBlock.agreement_ratio != null" class="cm-item">
+              <em>{{ $t('fastAnalysis.consensusAgreement') }}</em>
+              {{ formatAgreementPct(consensusBlock.agreement_ratio) }}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -353,6 +377,11 @@ export default {
     error: {
       type: String,
       default: null
+    },
+    errorTone: {
+      type: String,
+      default: 'error',
+      validator: (v) => ['error', 'warning', 'info'].includes(v)
     }
   },
   data () {
@@ -419,6 +448,26 @@ export default {
       if (c >= 70) return '#52c41a'
       if (c >= 50) return '#1890ff'
       return '#faad14'
+    },
+    consensusBlock () {
+      const c = this.result?.consensus
+      if (!c || typeof c !== 'object') return null
+      if (c.consensus_decision == null && c.consensus_score == null) return null
+      return c
+    },
+    insufficientCreditsError () {
+      if (!this.error) return false
+      const e = String(this.error)
+      return e.includes('积分不足') || e.toLowerCase().includes('insufficient credits')
+    },
+    errorTitle () {
+      if (this.errorTone === 'warning') {
+        return this.$t('fastAnalysis.analysisInProgressTitle')
+      }
+      if (this.insufficientCreditsError) {
+        return this.$t('fastAnalysis.insufficientCredits')
+      }
+      return this.$t('fastAnalysis.error')
     }
   },
   watch: {
@@ -462,6 +511,16 @@ export default {
       const num = parseFloat(value)
       if (isNaN(num)) return '--'
       return num.toFixed(decimals)
+    },
+    formatConsensusNum (n) {
+      if (n === undefined || n === null || n === '') return '--'
+      const x = Number(n)
+      return Number.isNaN(x) ? '--' : x.toFixed(1)
+    },
+    formatAgreementPct (r) {
+      const x = Number(r)
+      if (Number.isNaN(x)) return '--'
+      return `${Math.round(x * 100)}%`
     },
     formatProgress (value) {
       // 格式化进度显示，最多显示1位小数
@@ -810,6 +869,39 @@ export default {
         color: #595959;
         padding-top: 16px;
         border-top: 1px dashed #e8e8e8;
+      }
+
+      .consensus-strip {
+        margin-top: 14px;
+        padding: 12px 14px;
+        border-radius: 8px;
+        background: rgba(24, 144, 255, 0.06);
+        border: 1px solid rgba(24, 144, 255, 0.2);
+        font-size: 13px;
+        color: #434343;
+
+        .consensus-strip-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-weight: 600;
+          margin-bottom: 8px;
+          color: #1890ff;
+        }
+
+        .consensus-strip-metrics {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px 20px;
+
+          .cm-item {
+            em {
+              font-style: normal;
+              color: #8c8c8c;
+              margin-right: 6px;
+            }
+          }
+        }
       }
     }
 
@@ -1167,6 +1259,20 @@ export default {
     .decision-summary {
       color: #868993;
       border-top-color: #363c4e;
+    }
+
+    .consensus-strip {
+      background: rgba(24, 144, 255, 0.12);
+      border-color: rgba(24, 144, 255, 0.35);
+      color: #d1d4dc;
+
+      .consensus-strip-title {
+        color: #69c0ff;
+      }
+
+      .consensus-strip-metrics .cm-item em {
+        color: #868993;
+      }
     }
   }
 

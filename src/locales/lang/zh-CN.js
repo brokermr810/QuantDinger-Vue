@@ -2826,6 +2826,15 @@ const locale = {
   // 市场概览
   'fastAnalysis.marketOverview': '市场概览',
   'fastAnalysis.selectTip': '选择自选列表中的标的，开始 AI 智能分析',
+  'fastAnalysis.analysisInProgress': '该标的当前有分析正在进行，请稍候再试（请勿重复点击）。',
+  'fastAnalysis.analysisInProgressTitle': '分析进行中',
+  'fastAnalysis.insufficientCredits': '积分不足',
+  'fastAnalysis.insufficientCreditsDetail': '积分不足：需要 {required}，当前 {current}，还差 {shortage}。',
+  'fastAnalysis.analysisCompleteWithCredits': '分析完成，剩余积分：{remaining}',
+  'fastAnalysis.consensusTitle': '多周期客观共识',
+  'fastAnalysis.consensusDecision': '共识方向',
+  'fastAnalysis.consensusScore': '综合评分',
+  'fastAnalysis.consensusAgreement': '周期一致度',
 
   // ==================== AI 量化 ====================
   'aiQuant.title': 'AI 量化',

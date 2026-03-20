@@ -177,7 +177,7 @@ size="large"
 icon="thunderbolt"
 @click="startFastAnalysis"
 :loading="analyzing"
-:disabled="!selectedSymbol"
+:disabled="!selectedSymbol || analyzing"
 class="analyze-button">
               {{ $t('fastAnalysis.startAnalysis') }}
             </a-button>
@@ -188,7 +188,7 @@ class="analyze-button">
 
           <!-- 分析结果区域 -->
           <div class="analysis-main">
-            <div v-if="!analysisResult && !analyzing" class="analysis-placeholder">
+            <div v-if="!analysisResult && !analyzing && !analysisError" class="analysis-placeholder">
               <div class="placeholder-content">
                 <div class="placeholder-icon"><a-icon type="robot" /></div>
                 <h3>{{ $t('fastAnalysis.selectTip') }}</h3>
@@ -196,10 +196,11 @@ class="analyze-button">
               </div>
             </div>
             <FastAnalysisReport
-              v-if="analysisResult || analyzing"
+              v-if="analysisResult || analyzing || analysisError"
               :result="analysisResult"
               :loading="analyzing"
               :error="analysisError"
+              :error-tone="analysisErrorTone"
               @retry="startFastAnalysis"
             />
           </div>
@@ -509,6 +510,7 @@ export default {
       analyzing: false,
       analysisResult: null,
       analysisError: null,
+      analysisErrorTone: 'error',
       showHistoryModal: false,
       historyList: [],
       historyLoading: false,
@@ -581,6 +583,7 @@ export default {
       // Clear previous result when symbol changes
       this.analysisResult = null
       this.analysisError = null
+      this.analysisErrorTone = 'error'
       // Notify parent about symbol change (for Quick Trade integration)
       this.$emit('symbol-change', value)
     },
@@ -588,6 +591,7 @@ export default {
       this.selectedSymbol = `${stock.market}:${stock.symbol}`
       this.analysisResult = null
       this.analysisError = null
+      this.analysisErrorTone = 'error'
       this.$emit('symbol-change', this.selectedSymbol)
     },
     async loadMarketData () {
@@ -765,6 +769,24 @@ export default {
     getCurrencySymbol (market) {
       return '$'
     },
+    formatCreditNum (n) {
+      if (n === undefined || n === null || n === '') return '--'
+      const x = Number(n)
+      if (Number.isNaN(x)) return String(n)
+      return Number.isInteger(x) ? String(x) : x.toFixed(2)
+    },
+    async refreshUserInfoFromServer () {
+      try {
+        const res = await getUserInfo()
+        if (res && res.code === 1 && res.data) {
+          this.localUserInfo = res.data
+          this.userId = res.data.id
+          this.$store.commit('SET_INFO', res.data)
+        }
+      } catch (e) {
+        // 静默失败，积分以接口返回为准
+      }
+    },
     async startFastAnalysis () {
       if (this.analyzing) return
       if (!this.selectedSymbol) {
@@ -774,6 +796,7 @@ export default {
 
       this.analyzing = true
       this.analysisError = null
+      this.analysisErrorTone = 'error'
 
       const [market, symbol] = this.selectedSymbol.split(':')
       const language = this.$store.getters.lang || 'zh-CN'
@@ -787,15 +810,44 @@ export default {
         })
 
         if (res && res.code === 1 && res.data) {
-          this.analysisResult = res.data
-          this.$message.success(this.$t('dashboard.analysis.message.analysisComplete'))
+          const payload = { ...res.data }
+          delete payload.credits_charged
+          delete payload.remaining_credits
+          this.analysisResult = payload
+          const rem = res.data.remaining_credits
+          if (rem !== undefined && rem !== null) {
+            this.$message.success(
+              this.$t('fastAnalysis.analysisCompleteWithCredits', { remaining: this.formatCreditNum(rem) })
+            )
+          } else {
+            this.$message.success(this.$t('dashboard.analysis.message.analysisComplete'))
+          }
+          await this.refreshUserInfoFromServer()
         } else {
           throw new Error(res?.msg || '分析失败')
         }
       } catch (error) {
         console.error('Fast analysis failed:', error)
-        this.analysisError = error?.response?.data?.msg || error?.message || this.$t('dashboard.analysis.message.analysisFailed')
-        this.$message.error(this.analysisError)
+        const status = error?.response?.status
+        const body = error?.response?.data || {}
+        const msg = body.msg
+        const data = body.data
+
+        if (status === 429 && data && data.in_progress) {
+          this.analysisErrorTone = 'warning'
+          this.analysisError = this.$t('fastAnalysis.analysisInProgress')
+          this.$message.warning(this.analysisError)
+        } else if (status === 400 && msg === 'Insufficient credits') {
+          this.analysisError = this.$t('fastAnalysis.insufficientCreditsDetail', {
+            required: this.formatCreditNum(data?.required),
+            current: this.formatCreditNum(data?.current),
+            shortage: this.formatCreditNum(data?.shortage)
+          })
+          this.$message.error(this.analysisError)
+        } else {
+          this.analysisError = msg || error?.message || this.$t('dashboard.analysis.message.analysisFailed')
+          this.$message.error(this.analysisError)
+        }
       } finally {
         this.analyzing = false
       }
@@ -1239,6 +1291,7 @@ export default {
         this.selectedSymbol = newVal
         this.analysisResult = null
         this.analysisError = null
+        this.analysisErrorTone = 'error'
       }
     },
     autoAnalyzeSignal (newVal) {
