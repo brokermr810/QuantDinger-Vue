@@ -1009,17 +1009,47 @@ export default {
       const width = Math.min(100, Math.max(4, pct))
       return { width: `${width}%` }
     },
-    _formatNextRunText (iso) {
-      if (!iso) return ''
+    /**
+     * 与 profile 中设置的 IANA 时区一致；未设置或非法时回退为浏览器本地时区。
+     */
+    _displayDateTimeLocaleOptions () {
+      const tz = String((this.storeUserInfo && this.storeUserInfo.timezone) || '').trim()
+      const base = {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      }
+      if (!tz) return base
       try {
-        const d = new Date(iso)
-        if (Number.isNaN(d.getTime())) return ''
-        return d.toLocaleString(this.isZhLocale ? 'zh-CN' : 'en-US', {
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit'
-        })
+        Intl.DateTimeFormat(undefined, { timeZone: tz }).format(new Date())
+        return { ...base, timeZone: tz }
+      } catch (e) {
+        return base
+      }
+    },
+
+    /**
+     * 将后端时刻（建议 RFC3339 / 带 Z 的 UTC）解析为 Date；展示时再按 _displayDateTimeLocaleOptions 转本地。
+     */
+    _parseInstantForDisplay (s) {
+      s = String(s || '').trim()
+      if (!s) return null
+      // 无时区后缀时按 UTC 解析（与当前后端 _serialize_monitor_ts 约定一致），再交给 toLocale 转到用户本地
+      const hasTz = /[zZ]$/.test(s) || /[+-]\d{2}:?\d{2}$/.test(s)
+      if (!hasTz) {
+        const norm = s.replace(' ', 'T')
+        s = norm.endsWith('Z') ? norm : `${norm}Z`
+      }
+      const d = new Date(s)
+      return Number.isNaN(d.getTime()) ? null : d
+    },
+    _formatNextRunText (iso) {
+      try {
+        const d = this._parseInstantForDisplay(iso)
+        if (!d) return ''
+        return d.toLocaleString(undefined, this._displayDateTimeLocaleOptions())
       } catch (e) {
         return ''
       }
@@ -1206,7 +1236,7 @@ export default {
           name: `AI-${stock.symbol}-${interval}m`,
           position_ids: positionIds,
           monitor_type: 'ai',
-          config: { run_interval_minutes: interval, symbol: stock.symbol, market: stock.market },
+          config: { run_interval_minutes: interval, symbol: stock.symbol, market: stock.market, language: this.$store.getters.lang || this.$i18n.locale || 'en-US' },
           notification_config: { channels: notifyChannels },
           is_active: true
         })
@@ -1265,7 +1295,7 @@ export default {
             name: `AI-${symbol}-${interval}m`,
             position_ids: positionIds,
             monitor_type: 'ai',
-            config: { run_interval_minutes: interval, symbol, market },
+            config: { run_interval_minutes: interval, symbol, market, language: this.$store.getters.lang || this.$i18n.locale || 'en-US' },
             notification_config: { channels: notifyChannels },
             is_active: true
           })
@@ -1691,12 +1721,13 @@ export default {
     formatTime (timestamp) {
       if (!timestamp) return '-'
       const date = new Date(timestamp * 1000)
-      return date.toLocaleString('zh-CN')
+      if (Number.isNaN(date.getTime())) return '-'
+      return date.toLocaleString(undefined, this._displayDateTimeLocaleOptions())
     },
     formatIsoTime (isoString) {
-      if (!isoString) return '-'
-      const date = new Date(isoString)
-      return date.toLocaleString('zh-CN')
+      const d = this._parseInstantForDisplay(isoString)
+      if (!d) return '-'
+      return d.toLocaleString(undefined, this._displayDateTimeLocaleOptions())
     },
     getStatusColor (status) {
       const colors = {

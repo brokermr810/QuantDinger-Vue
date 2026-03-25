@@ -1787,6 +1787,10 @@ const locale = {
   'settings.field.ENABLE_REFLECTION_WORKER': '自動検証を有効化',
   'settings.field.REFLECTION_WORKER_INTERVAL_SEC': '検証間隔（秒）',
 
+  'profile.timezone': 'タイムゾーン',
+  'profile.timezonePlaceholder': 'ブラウザ／システムに合わせる',
+  'profile.timezoneBrowser': 'ブラウザと同じ',
+
   // Profile - Notification Settings (通知設定)
   'profile.notifications.title': '通知設定',
   'profile.notifications.hint': 'デフォルトの通知方法を設定します。資産モニターやアラート作成時に自動的に使用されます',

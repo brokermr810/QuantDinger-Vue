@@ -162,6 +162,8 @@ const user = {
           if (res && res.code === 1 && res.data) {
             const info = res.data
             commit('SET_INFO', info)
+            const expiresAt = new Date().getTime() + 7 * 24 * 60 * 60 * 1000
+            storage.set(USER_INFO, info, expiresAt)
             if (info.nickname) {
               commit('SET_NAME', { name: info.nickname, welcome: welcome() })
             } else if (info.username) {

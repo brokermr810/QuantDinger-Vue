@@ -103,7 +103,7 @@ export function getProfile () {
 
 /**
  * Update current user profile
- * @param {Object} data - { nickname, email, avatar }
+ * @param {Object} data - { nickname, avatar, timezone }
  */
 export function updateProfile (data) {
   return request({

@@ -1786,6 +1786,10 @@ const locale = {
   'settings.field.ENABLE_REFLECTION_WORKER': '자동 검증 사용',
   'settings.field.REFLECTION_WORKER_INTERVAL_SEC': '검증 주기(초)',
 
+  'profile.timezone': '시간대',
+  'profile.timezonePlaceholder': '브라우저/시스템 따르기',
+  'profile.timezoneBrowser': '브라우저와 동일',
+
   // Profile - Notification Settings (알림 설정)
   'profile.notifications.title': '알림 설정',
   'profile.notifications.hint': '기본 알림 방법을 설정하세요. 자산 모니터링 및 알림 생성 시 자동으로 사용됩니다',

@@ -1831,6 +1831,10 @@ const locale = {
   'settings.field.ENABLE_REFLECTION_WORKER': 'Automatische Verifikation aktivieren',
   'settings.field.REFLECTION_WORKER_INTERVAL_SEC': 'Verifikationsintervall (Sek.)',
 
+  'profile.timezone': 'Zeitzone',
+  'profile.timezonePlaceholder': 'Browser/System übernehmen',
+  'profile.timezoneBrowser': 'Wie der Browser',
+
   // Profile - Notification Settings (Benachrichtigungseinstellungen)
   'profile.notifications.title': 'Benachrichtigungseinstellungen',
   'profile.notifications.hint': 'Konfigurieren Sie Ihre Standard-Benachrichtigungsmethoden, die automatisch beim Erstellen von Asset-Monitoren und Alarmen verwendet werden',

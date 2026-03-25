@@ -1782,6 +1782,10 @@ const locale = {
   'settings.field.ENABLE_REFLECTION_WORKER': 'تمكين التحقق التلقائي',
   'settings.field.REFLECTION_WORKER_INTERVAL_SEC': 'فاصل التحقق (ثانية)',
 
+  'profile.timezone': 'المنطقة الزمنية',
+  'profile.timezonePlaceholder': 'اتباع المتصفح / النظام',
+  'profile.timezoneBrowser': 'نفس المتصفح',
+
   // Profile - Notification Settings (إعدادات الإشعارات)
   'profile.notifications.title': 'إعدادات الإشعارات',
   'profile.notifications.hint': 'قم بتكوين طرق الإشعارات الافتراضية، سيتم استخدامها تلقائياً عند إنشاء مراقبة الأصول والتنبيهات',

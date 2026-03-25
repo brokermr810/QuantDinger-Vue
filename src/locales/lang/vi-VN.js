@@ -2913,6 +2913,10 @@ const locale = {
 'settings.field.ENABLE_REFLECTION_WORKER': 'Bật xác minh tự động',
 'settings.field.REFLECTION_WORKER_INTERVAL_SEC': 'Khoảng thời gian xác minh (giây)',
 
+'profile.timezone': 'Múi giờ',
+'profile.timezonePlaceholder': 'Theo trình duyệt/hệ thống',
+'profile.timezoneBrowser': 'Giống trình duyệt',
+
 // Profile - Notification Settings (Cài đặt thông báo)
 'profile.notifications.title': 'Cài đặt thông báo',
 'profile.notifications.hint': 'Cấu hình phương thức thông báo mặc định, sẽ được sử dụng tự động khi tạo giám sát tài sản và cảnh báo',

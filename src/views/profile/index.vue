@@ -164,6 +164,23 @@
                   </a-input>
                 </a-form-item>
 
+                <a-form-item :label="$t('profile.timezone') || '时区'">
+                  <a-select
+                    v-decorator="['timezone', { initialValue: profile.timezone || '' }]"
+                    :placeholder="$t('profile.timezonePlaceholder') || '跟随浏览器/系统'"
+                    show-search
+                    allow-clear
+                    option-filter-prop="children"
+                  >
+                    <a-select-option value="">
+                      {{ $t('profile.timezoneBrowser') || '跟随浏览器' }}
+                    </a-select-option>
+                    <a-select-option v-for="z in timezoneIanaList" :key="z" :value="z">
+                      {{ z }}
+                    </a-select-option>
+                  </a-select>
+                </a-form-item>
+
                 <a-form-item>
                   <a-button type="primary" :loading="saving" @click="handleSaveProfile">
                     <a-icon type="save" />
@@ -764,9 +781,33 @@ export default {
         nickname: '',
         email: '',
         avatar: '',
+        timezone: '',
         role: 'user',
         last_login_at: null
       },
+      timezoneIanaList: [
+        'UTC',
+        'Etc/UTC',
+        'Asia/Shanghai',
+        'Asia/Hong_Kong',
+        'Asia/Taipei',
+        'Asia/Tokyo',
+        'Asia/Seoul',
+        'Asia/Singapore',
+        'Asia/Dubai',
+        'Asia/Kolkata',
+        'Europe/London',
+        'Europe/Paris',
+        'Europe/Berlin',
+        'America/New_York',
+        'America/Chicago',
+        'America/Denver',
+        'America/Los_Angeles',
+        'America/Toronto',
+        'America/Sao_Paulo',
+        'Australia/Sydney',
+        'Pacific/Auckland'
+      ],
       // Credits log
       creditsLog: [],
       creditsLogLoading: false,
@@ -1003,7 +1044,8 @@ export default {
           this.$nextTick(() => {
             this.profileForm.setFieldsValue({
               nickname: this.profile.nickname,
-              email: this.profile.email
+              email: this.profile.email,
+              timezone: this.profile.timezone || ''
             })
           })
         } else {
@@ -1052,10 +1094,14 @@ export default {
 
         this.saving = true
         try {
-          const res = await updateProfile(values)
+          const res = await updateProfile({
+            nickname: values.nickname,
+            timezone: values.timezone != null ? values.timezone : ''
+          })
           if (res.code === 1) {
             this.$message.success(res.msg || 'Profile updated successfully')
             this.loadProfile()
+            this.$store.dispatch('FetchUserInfo').catch(() => {})
           } else {
             this.$message.error(res.msg || 'Update failed')
           }
@@ -1182,10 +1228,22 @@ export default {
       return labels[role] || role
     },
 
+    _profileDateTimeLocaleOptions () {
+      const tz = String((this.profile && this.profile.timezone) || '').trim()
+      if (!tz) return {}
+      try {
+        Intl.DateTimeFormat(undefined, { timeZone: tz }).format(new Date())
+        return { timeZone: tz }
+      } catch (e) {
+        return {}
+      }
+    },
+
     formatTime (timestamp) {
       if (!timestamp) return ''
       const date = new Date(typeof timestamp === 'number' ? timestamp * 1000 : timestamp)
-      return date.toLocaleString()
+      if (Number.isNaN(date.getTime())) return ''
+      return date.toLocaleString(undefined, this._profileDateTimeLocaleOptions())
     },
 
     // Credits log time should follow backend returned wall-clock value.

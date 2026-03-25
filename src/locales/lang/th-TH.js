@@ -1783,6 +1783,10 @@ const locale = {
   'settings.field.ENABLE_REFLECTION_WORKER': 'เปิดใช้การตรวจสอบอัตโนมัติ',
   'settings.field.REFLECTION_WORKER_INTERVAL_SEC': 'ช่วงเวลาตรวจสอบ (วินาที)',
 
+  'profile.timezone': 'เขตเวลา',
+  'profile.timezonePlaceholder': 'ตามเบราว์เซอร์/ระบบ',
+  'profile.timezoneBrowser': 'เหมือนเบราว์เซอร์',
+
   // Profile - Notification Settings (การตั้งค่าการแจ้งเตือน)
   'profile.notifications.title': 'การตั้งค่าการแจ้งเตือน',
   'profile.notifications.hint': 'กำหนดค่าวิธีการแจ้งเตือนเริ่มต้น จะถูกใช้โดยอัตโนมัติเมื่อสร้างการติดตามสินทรัพย์และการแจ้งเตือน',

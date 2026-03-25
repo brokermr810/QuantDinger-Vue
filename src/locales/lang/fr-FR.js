@@ -1783,6 +1783,10 @@ const locale = {
   'settings.field.ENABLE_REFLECTION_WORKER': 'Activer la vérification automatique',
   'settings.field.REFLECTION_WORKER_INTERVAL_SEC': 'Intervalle de vérification (s)',
 
+  'profile.timezone': 'Fuseau horaire',
+  'profile.timezonePlaceholder': 'Comme le navigateur / le système',
+  'profile.timezoneBrowser': 'Identique au navigateur',
+
   // Profile - Notification Settings (Paramètres de notification)
   'profile.notifications.title': 'Paramètres de notification',
   'profile.notifications.hint': 'Configurez vos méthodes de notification par défaut, utilisées automatiquement lors de la création de surveillances et alertes',
