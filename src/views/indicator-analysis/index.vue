@@ -1721,7 +1721,12 @@ export default {
     const handleCreateStrategyFromIndicator = (indicator) => {
       proxy.$router.push({
         path: '/trading-assistant',
-        query: { mode: 'create', indicator_id: String(indicator.id) }
+        query: {
+          mode: 'create',
+          indicator_id: String(indicator.id),
+          indicator_name: indicator.name || '',
+          indicator_desc: indicator.description || ''
+        }
       })
     }
 

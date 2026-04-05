@@ -479,6 +479,10 @@
                   style="margin-bottom: 16px"
                 />
                 <div style="margin-bottom: 16px; text-align: right;">
+                  <a-button style="margin-right: 12px" @click="openExchangeSignupModal">
+                    <a-icon type="rocket" />
+                    {{ $t('profile.exchange.openAccount') }}
+                  </a-button>
                   <a-button type="primary" icon="plus" @click="openAddExchangeModal">
                     {{ $t('profile.exchange.addAccount') }}
                   </a-button>
@@ -491,8 +495,16 @@
                   :locale="{ emptyText: $t('profile.exchange.noAccounts') || '暂无交易所账户，请点击上方按钮添加' }"
                   size="small"
                 >
-                  <template slot="exchange_id" slot-scope="text">
+                  <template slot="exchange_id" slot-scope="text, record">
                     <span style="text-transform: capitalize; font-weight: 500;">{{ getExchangeDisplayName(text) }}</span>
+                    <a-tag
+                      v-if="record.enable_demo_trading"
+                      color="orange"
+                      size="small"
+                      style="margin-left: 6px;"
+                    >
+                      {{ $t('profile.exchange.demoTag') }}
+                    </a-tag>
                   </template>
                   <template slot="api_key_hint" slot-scope="text, record">
                     <span class="credential-hint">{{ text || record.name || '-' }}</span>
@@ -626,6 +638,25 @@
 
         <!-- Crypto fields -->
         <template v-if="addExchangeType === 'crypto'">
+          <div v-if="selectedExchangeApiDocUrl" class="exchange-api-doc-callout">
+            <div class="exchange-api-doc-callout__content">
+              <div class="exchange-api-doc-callout__icon">
+                <a-icon type="link" />
+              </div>
+              <div class="exchange-api-doc-callout__text">
+                <div class="exchange-api-doc-callout__title">
+                  {{ selectedCryptoExchangeName }} {{ $t('profile.exchange.apiDocTitleSuffix') }}
+                </div>
+                <div class="exchange-api-doc-callout__hint">
+                  {{ $t('profile.exchange.apiDocHint') }}
+                </div>
+              </div>
+            </div>
+            <a-button type="link" size="small" class="exchange-api-doc-callout__action" @click="openSelectedExchangeApiDoc">
+              {{ $t('profile.exchange.apiDocAction') }}
+              <a-icon type="arrow-right" />
+            </a-button>
+          </div>
           <a-form-item :label="$t('profile.exchange.apiKey')">
             <a-input-password
               v-decorator="['api_key', { rules: [{ required: true, message: 'API Key is required' }] }]"
@@ -753,6 +784,45 @@
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <a-modal
+      :title="$t('profile.exchange.openAccountTitle')"
+      :visible="showExchangeSignupModal"
+      :wrap-class-name="exchangeModalWrapClass"
+      @cancel="showExchangeSignupModal = false"
+      :footer="null"
+      width="860px"
+    >
+      <div class="exchange-signup-modal">
+        <div class="exchange-signup-promo">{{ $t('profile.exchange.openAccountPromo') }}</div>
+        <div class="exchange-signup-grid">
+          <div
+            v-for="item in exchangeSignupCards"
+            :key="item.id"
+            class="exchange-signup-card"
+          >
+            <div class="exchange-signup-card__header">
+              <div class="exchange-signup-logo" :style="{ background: item.brandBg, color: item.brandColor }">
+                {{ item.short }}
+              </div>
+              <div class="exchange-signup-meta">
+                <div class="exchange-signup-name">{{ item.name }}</div>
+              </div>
+            </div>
+            <div class="exchange-signup-actions">
+              <a-button
+                type="primary"
+                block
+                :disabled="!item.signupUrl"
+                @click="openExchangeSignupLink(item.signupUrl)"
+              >
+                {{ $t('profile.exchange.openAccountButton') }}
+              </a-button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -855,6 +925,7 @@ export default {
       exchangeCredentials: [],
       exchangeLoading: false,
       showAddExchangeModal: false,
+      showExchangeSignupModal: false,
       savingExchange: false,
       testingExchange: false,
       exchangeTestResult: null,
@@ -864,15 +935,67 @@ export default {
       egressServerIpv6: '',
       egressIpLoading: false,
       cryptoExchangeList: [
-        { id: 'binance', name: 'Binance' },
-        { id: 'okx', name: 'OKX' },
-        { id: 'bitget', name: 'Bitget' },
-        { id: 'bybit', name: 'Bybit' },
-        { id: 'coinbaseexchange', name: 'Coinbase' },
-        { id: 'kraken', name: 'Kraken' },
-        { id: 'kucoin', name: 'KuCoin' },
-        { id: 'gate', name: 'Gate.io' },
-        { id: 'bitfinex', name: 'Bitfinex' }
+        { id: 'binance', name: 'Binance', docsUrl: 'https://www.binance.com/en/support/faq/api-faq-360027369792' },
+        { id: 'okx', name: 'OKX', docsUrl: 'https://www.okx.com/help/how-do-i-create-my-api-key' },
+        { id: 'bitget', name: 'Bitget', docsUrl: 'https://www.bitget.com/api-doc/common/introduction' },
+        { id: 'bybit', name: 'Bybit', docsUrl: 'https://www.bybit.com/en/help-center/article/How-to-create-your-API-key/' },
+        { id: 'coinbaseexchange', name: 'Coinbase', docsUrl: 'https://docs.cdp.coinbase.com/exchange/rest-api/authentication' },
+        { id: 'kraken', name: 'Kraken', docsUrl: 'https://support.kraken.com/articles/360000919966-how-to-create-an-api-key' },
+        { id: 'kucoin', name: 'KuCoin', docsUrl: 'https://www.kucoin.com/docs-new/authentication' },
+        { id: 'gate', name: 'Gate.io', docsUrl: 'https://www.gate.com/docs/developers/apiv4/' },
+        { id: 'bitfinex', name: 'Bitfinex', docsUrl: 'https://docs.bitfinex.com/docs/create-an-api-key' },
+        { id: 'deepcoin', name: 'Deepcoin', docsUrl: 'https://www.deepcoin.com/docs/deepcoinApiDocs/' },
+        { id: 'htx', name: 'HTX', docsUrl: 'https://www.htx.com/support/en-us/detail/360000188081' }
+      ],
+      exchangeSignupCards: [
+        {
+          id: 'binance',
+          name: 'Binance',
+          short: 'BN',
+          brandBg: 'rgba(243, 186, 47, 0.16)',
+          brandColor: '#f0b90b',
+          signupUrl: 'https://www.bsmkweb.cc/register?ref=QUANTDINGER'
+        },
+        {
+          id: 'bitget',
+          name: 'Bitget',
+          short: 'BG',
+          brandBg: 'rgba(0, 193, 255, 0.14)',
+          brandColor: '#00c1ff',
+          signupUrl: 'https://partner.hdmune.cn/bg/7r4xz8kd'
+        },
+        {
+          id: 'bybit',
+          name: 'Bybit',
+          short: 'BY',
+          brandBg: 'rgba(247, 166, 0, 0.14)',
+          brandColor: '#f7a600',
+          signupUrl: 'https://partner.bybit.com/b/DINGER'
+        },
+        {
+          id: 'okx',
+          name: 'OKX',
+          short: 'OK',
+          brandBg: 'rgba(17, 24, 39, 0.08)',
+          brandColor: '#111827',
+          signupUrl: 'https://www.xqmnobxky.com/join/QUANTDINGER'
+        },
+        {
+          id: 'gate',
+          name: 'Gate.io',
+          short: 'GT',
+          brandBg: 'rgba(42, 93, 255, 0.12)',
+          brandColor: '#2a5dff',
+          signupUrl: 'https://www.gateport.company/share/DINGER'
+        },
+        {
+          id: 'htx',
+          name: 'HTX',
+          short: 'HX',
+          brandBg: 'rgba(22, 119, 255, 0.12)',
+          brandColor: '#1677ff',
+          signupUrl: 'https://www.htx.com/invite/zh-cn/1f?invite_code=dinger'
+        }
       ]
     }
   },
@@ -979,6 +1102,15 @@ export default {
     },
     addExchangeShowDemo () {
       return this.addExchangeType === 'crypto' && !!this.selectedExchangeId
+    },
+    selectedCryptoExchangeMeta () {
+      return this.cryptoExchangeList.find(item => item.id === this.selectedExchangeId) || null
+    },
+    selectedCryptoExchangeName () {
+      return this.selectedCryptoExchangeMeta ? this.selectedCryptoExchangeMeta.name : this.getExchangeDisplayName(this.selectedExchangeId)
+    },
+    selectedExchangeApiDocUrl () {
+      return this.selectedCryptoExchangeMeta ? this.selectedCryptoExchangeMeta.docsUrl : ''
     }
   },
   watch: {
@@ -1397,6 +1529,23 @@ export default {
       this.showAddExchangeModal = true
     },
 
+    openExchangeSignupModal () {
+      this.showExchangeSignupModal = true
+    },
+
+    openExternalLink (url) {
+      if (!url) return
+      window.open(url, '_blank')
+    },
+
+    openExchangeSignupLink (url) {
+      this.openExternalLink(url)
+    },
+
+    openSelectedExchangeApiDoc () {
+      this.openExternalLink(this.selectedExchangeApiDocUrl)
+    },
+
     async fetchEgressIp () {
       this.egressIpLoading = true
       this.egressServerIpv4 = ''
@@ -1478,6 +1627,8 @@ export default {
         kucoin: 'KuCoin',
         gate: 'Gate.io',
         bitfinex: 'Bitfinex',
+        deepcoin: 'Deepcoin',
+        htx: 'HTX',
         ibkr: 'IBKR',
         mt5: 'MetaTrader 5'
       }
@@ -2936,6 +3087,61 @@ export default {
     width: 100%;
   }
 
+  .exchange-api-doc-callout {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 16px;
+    padding: 12px 14px;
+    border: 1px solid rgba(24, 144, 255, 0.18);
+    border-radius: 10px;
+    background: linear-gradient(90deg, rgba(24, 144, 255, 0.06) 0%, rgba(82, 196, 26, 0.04) 100%);
+  }
+
+  .exchange-api-doc-callout__content {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .exchange-api-doc-callout__icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(24, 144, 255, 0.12);
+    color: #1890ff;
+    flex: 0 0 auto;
+  }
+
+  .exchange-api-doc-callout__text {
+    min-width: 0;
+  }
+
+  .exchange-api-doc-callout__title {
+    color: rgba(0, 0, 0, 0.85);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+
+  .exchange-api-doc-callout__hint {
+    color: rgba(0, 0, 0, 0.55);
+    font-size: 12px;
+    line-height: 1.5;
+    margin-top: 2px;
+  }
+
+  .exchange-api-doc-callout__action {
+    padding: 0;
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+
   .egress-ip-row {
     display: flex;
     align-items: center;
@@ -3094,6 +3300,28 @@ export default {
       color: @exchange-dark-muted !important;
     }
 
+    .exchange-api-doc-callout {
+      background: linear-gradient(90deg, rgba(24, 144, 255, 0.12) 0%, rgba(82, 196, 26, 0.08) 100%);
+      border-color: rgba(88, 166, 255, 0.26);
+    }
+
+    .exchange-api-doc-callout__icon {
+      background: rgba(88, 166, 255, 0.16);
+      color: #58a6ff;
+    }
+
+    .exchange-api-doc-callout__title {
+      color: @exchange-dark-title;
+    }
+
+    .exchange-api-doc-callout__hint {
+      color: @exchange-dark-muted;
+    }
+
+    .exchange-api-doc-callout__action {
+      color: #58a6ff;
+    }
+
     .egress-ip-value {
       border-color: @exchange-dark-border !important;
       background: @exchange-dark-input !important;
@@ -3183,6 +3411,85 @@ export default {
 
   .ant-empty-description {
     color: @exchange-dark-muted;
+  }
+}
+
+.exchange-signup-modal {
+  .exchange-signup-promo {
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: linear-gradient(90deg, rgba(22, 119, 255, 0.12) 0%, rgba(99, 102, 241, 0.1) 100%);
+    border: 1px solid rgba(22, 119, 255, 0.2);
+    color: #1e40af;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.5;
+    text-align: center;
+  }
+
+  .exchange-signup-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .exchange-signup-card {
+    border: 1px solid #eef1f5;
+    border-radius: 16px;
+    padding: 16px;
+    background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+  }
+
+  .exchange-signup-card__header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .exchange-signup-logo {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .exchange-signup-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1f2937;
+  }
+
+  .exchange-signup-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
+.profile-exchange-modal--dark {
+  .exchange-signup-modal {
+    .exchange-signup-promo {
+      color: #93c5fd;
+      background: linear-gradient(90deg, rgba(59, 130, 246, 0.18) 0%, rgba(99, 102, 241, 0.14) 100%);
+      border-color: rgba(96, 165, 250, 0.35);
+    }
+
+    .exchange-signup-card {
+      background: linear-gradient(180deg, #171717 0%, #1f1f1f 100%);
+      border-color: @exchange-dark-border;
+      box-shadow: none;
+    }
+
+    .exchange-signup-name {
+      color: @exchange-dark-title;
+    }
   }
 }
 </style>

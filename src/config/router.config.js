@@ -23,26 +23,26 @@ export const asyncRouterMap = [
         component: () => import('@/views/indicator-analysis'),
         meta: { title: 'menu.dashboard.indicator', keepAlive: true, icon: 'line-chart', permission: ['dashboard'] }
       },
-      // 3. 指标市场
-      {
-        path: '/indicator-community',
-        name: 'IndicatorCommunity',
-        component: () => import('@/views/indicator-community'),
-        meta: { title: 'menu.dashboard.community', keepAlive: false, icon: 'shop', permission: ['dashboard'] }
-      },
-      // 4. 回测中心
+      // 3. 回测中心
       {
         path: '/backtest-center',
         name: 'BacktestCenter',
         component: () => import('@/views/backtest-center'),
         meta: { title: 'menu.dashboard.backtestCenter', keepAlive: false, icon: 'experiment', permission: ['dashboard'] }
       },
-      // 5. 交易助手（含实盘概览 = 原仪表盘）
+      // 4. 交易助手（含实盘概览 = 原仪表盘）
       {
         path: '/trading-assistant',
         name: 'TradingAssistant',
         component: () => import('@/views/trading-assistant'),
         meta: { title: 'menu.dashboard.tradingAssistant', keepAlive: true, icon: 'robot', permission: ['dashboard'] }
+      },
+      // 5. 指标市场
+      {
+        path: '/indicator-community',
+        name: 'IndicatorCommunity',
+        component: () => import('@/views/indicator-community'),
+        meta: { title: 'menu.dashboard.community', keepAlive: false, icon: 'shop', permission: ['dashboard'] }
       },
       // 原仪表盘路由保留兼容，重定向到交易助手
       {
@@ -68,13 +68,6 @@ export const asyncRouterMap = [
         hidden: true,
         meta: { title: 'menu.dashboard.portfolio', keepAlive: true, icon: 'fund', permission: ['dashboard'] }
       },
-      // 用户管理 (admin only)
-      {
-        path: '/user-manage',
-        name: 'UserManage',
-        component: () => import('@/views/user-manage'),
-        meta: { title: 'menu.userManage', keepAlive: false, icon: 'team', permission: ['admin'] }
-      },
       // 个人中心
       {
         path: '/profile',
@@ -88,6 +81,13 @@ export const asyncRouterMap = [
         name: 'Billing',
         component: () => import('@/views/billing'),
         meta: { title: 'menu.billing', keepAlive: false, icon: 'wallet', permission: ['dashboard'] }
+      },
+      // 用户管理 (admin only)
+      {
+        path: '/user-manage',
+        name: 'UserManage',
+        component: () => import('@/views/user-manage'),
+        meta: { title: 'menu.userManage', keepAlive: false, icon: 'team', permission: ['admin'] }
       },
       // 系统设置 (admin only) - 放在最后
       {

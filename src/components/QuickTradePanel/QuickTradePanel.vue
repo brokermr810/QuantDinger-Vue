@@ -65,9 +65,15 @@
       >
         <a-select-option v-for="c in credentials" :key="c.id" :value="c.id">
           <span style="text-transform: capitalize;">{{ c.exchange_id || c.name }}</span>
+          <a-tag v-if="c.enable_demo_trading" color="orange" size="small" style="margin-left: 6px;">{{ $t('quickTrade.testnetTag') }}</a-tag>
           <a-tag v-if="c.market_type" size="small" style="margin-left: 6px;">{{ c.market_type }}</a-tag>
         </a-select-option>
       </a-select>
+      <div class="qt-manage-link">
+        <router-link to="/profile?tab=exchange">
+          <a-icon type="setting" style="margin-right: 4px;" />{{ $t('profile.exchange.goToManage') }}
+        </router-link>
+      </div>
       <!-- Balance -->
       <div class="qt-balance" v-if="balance.available > 0">
         <span class="qt-balance-label">{{ $t('quickTrade.available') }}:</span>
@@ -906,6 +912,11 @@ export default {
   font-size: 12px;
   .qt-balance-label { color: #999; }
   .qt-balance-value { color: #52c41a; font-weight: 600; }
+}
+
+.qt-manage-link {
+  margin-top: 6px;
+  font-size: 12px;
 }
 
 .qt-direction-toggle {

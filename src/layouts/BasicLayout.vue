@@ -119,7 +119,7 @@
         </div>
         <!-- 版本号 -->
         <div class="footer-section version">
-          V2.2.3
+          V{{ appVersion }}
         </div>
       </div>
     </div>
@@ -234,6 +234,9 @@ export default {
     menus () {
       const routes = this.mainMenu.find(item => item.path === '/')
       return (routes && routes.children) || []
+    },
+    appVersion () {
+      return defaultSettings.appVersion || '3.0.1'
     }
   },
   created () {

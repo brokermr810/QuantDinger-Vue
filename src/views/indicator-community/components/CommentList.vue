@@ -355,10 +355,24 @@ export default {
 }
 
 // 暗色主题
+body.dark,
+.dark,
 [data-theme='dark'] {
   .comment-list {
     .comment-form {
       background: #262626;
+    }
+
+    /deep/ .ant-input,
+    /deep/ .ant-input:hover,
+    /deep/ .ant-input:focus {
+      background: #1f1f1f;
+      border-color: #434343;
+      color: rgba(255, 255, 255, 0.88);
+    }
+
+    /deep/ .ant-rate {
+      color: #fadb14;
     }
 
     .my-comment-hint {

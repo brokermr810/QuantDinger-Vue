@@ -15,6 +15,8 @@
 export const PYTHON_API_BASE_URL = process.env.VUE_APP_PYTHON_API_BASE_URL || 'http://localhost:5000'
 
 export default {
+  /** Web UI release label (footer, docs cross-reference). */
+  appVersion: '3.0.1',
   navTheme: 'light', // theme for nav menu
   primaryColor: '#13C2C2', // '#F5222D', // primary color of ant design
   layout: 'sidemenu', // nav menu position: `sidemenu` or `topmenu`

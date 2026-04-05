@@ -22,7 +22,10 @@ const api = {
   verifyCode: '/api/strategies/verify-code',
   aiGenerate: '/api/strategies/ai-generate',
   performance: '/api/strategies/performance',
-  logs: '/api/strategies/logs'
+  logs: '/api/strategies/logs',
+  backtest: '/api/strategies/backtest',
+  backtestHistory: '/api/strategies/backtest/history',
+  backtestGet: '/api/strategies/backtest/get'
 }
 
 /**
@@ -292,5 +295,33 @@ export function getStrategyLogs (id, params = {}) {
     url: api.logs,
     method: 'get',
     params: { id, ...params }
+  })
+}
+
+export function runStrategyBacktest (data) {
+  const payload = { ...(data || {}) }
+  const timeout = payload.timeout
+  delete payload.timeout
+  return request({
+    url: api.backtest,
+    method: 'post',
+    data: payload,
+    timeout
+  })
+}
+
+export function getStrategyBacktestHistory (params = {}) {
+  return request({
+    url: api.backtestHistory,
+    method: 'get',
+    params
+  })
+}
+
+export function getStrategyBacktestRun (runId) {
+  return request({
+    url: api.backtestGet,
+    method: 'get',
+    params: { runId }
   })
 }

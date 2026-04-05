@@ -577,10 +577,28 @@ export default {
 }
 
 // 暗色主题
+body.dark,
+.dark,
 [data-theme='dark'] {
   .indicator-detail-modal {
+    .ant-modal-content {
+      background: #1f1f1f;
+      color: rgba(255, 255, 255, 0.85);
+    }
+
+    .ant-modal-close {
+      color: rgba(255, 255, 255, 0.65);
+
+      &:hover {
+        color: rgba(255, 255, 255, 0.92);
+      }
+    }
+
     .detail-body {
+      background: #1a1a1a;
+
       .section h3 {
+        color: rgba(255, 255, 255, 0.88);
         border-color: #303030;
       }
 
@@ -594,6 +612,10 @@ export default {
         .perf-label {
           color: rgba(255, 255, 255, 0.45);
         }
+
+        .perf-value {
+          color: rgba(255, 255, 255, 0.88);
+        }
       }
     }
 
@@ -601,6 +623,33 @@ export default {
       background: #1f1f1f;
       border-color: #303030;
     }
+
+    .action-buttons {
+      .ant-btn:not(.ant-btn-primary) {
+        background: #262626;
+        border-color: #434343;
+        color: rgba(255, 255, 255, 0.72);
+      }
+    }
+
+    /deep/ .ant-statistic {
+      .ant-statistic-content {
+        color: rgba(255, 255, 255, 0.88);
+      }
+    }
+
+    .rating-text {
+      color: rgba(255, 255, 255, 0.72);
+    }
+
+    .publish-time {
+      color: rgba(255, 255, 255, 0.72);
+    }
+
+    .author-name {
+      color: rgba(255, 255, 255, 0.92);
+    }
   }
 }
+
 </style>

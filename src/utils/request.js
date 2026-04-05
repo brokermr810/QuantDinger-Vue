@@ -89,13 +89,15 @@ const errorHandler = (error) => {
 
 // request interceptor
 request.interceptors.request.use(config => {
-  // 确保请求级别的 timeout 设置生效（不会被实例默认值覆盖）
-  // axios 会使用请求级别的 timeout，如果提供了的话
-  if (config.timeout && config.timeout > 0) {
-    // timeout 已设置，保持原值
-  } else if (config.url && config.url.includes('/backtest')) {
-    // 回测接口默认使用长超时
-    config.timeout = 600000 // 10 minutes
+  // axios 会把实例默认 timeout 挂到每个请求上，因此这里需要识别
+  // “仍然是默认值”的情况，再按接口类型覆盖成更长超时。
+  const isDefaultTimeout = !config.timeout || config.timeout === request.defaults.timeout
+  if (config.url && isDefaultTimeout) {
+    if (config.url.includes('/backtest/aiAnalyze')) {
+      config.timeout = ANALYSIS_TIMEOUT
+    } else if (config.url.includes('/backtest')) {
+      config.timeout = BACKTEST_TIMEOUT
+    }
   }
 
   // 使用统一的 token 获取函数

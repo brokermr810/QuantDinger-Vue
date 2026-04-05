@@ -307,6 +307,7 @@
                 :run-tip="runTip"
                 :has-result="hasResult"
                 :result="result"
+                :user-id="userId"
                 :backtestRunId="backtestRunId"
                 :symbol="symbol"
                 :market="market"
@@ -318,12 +319,10 @@
         </a-row>
       </a-tab-pane>
 
-      <!-- ===== 策略回测 ===== -->
       <a-tab-pane key="strategy" :tab="$t('backtest-center.tabs.strategy')">
         <a-row :gutter="20" class="workspace">
           <a-col :xs="24" :md="9" :lg="8" class="config-col">
             <div class="config-panel">
-              <!-- 策略选择 -->
               <div class="section">
                 <div class="section-title">{{ $t('backtest-center.strategy.selectStrategy') }}</div>
                 <a-select
@@ -342,15 +341,23 @@
                     :value="s.id"
                   >{{ s.strategy_name || ('Strategy #' + s.id) }}</a-select-option>
                 </a-select>
-                <div v-if="selectedStrategyObj" class="strategy-info">
-                  <span v-if="selectedStrategyObj.symbol">
-                    <a-tag size="small">{{ selectedStrategyObj.symbol }}</a-tag>
-                  </span>
-                  <span v-if="selectedStrategyObj.strategy_mode === 'script'" style="color: #9254de; font-size: 11px;">[Script]</span>
+                <div v-if="selectedStrategyObj" class="strategy-summary-card">
+                  <div class="strategy-summary-head">
+                    <div class="strategy-summary-title">{{ selectedStrategyObj.strategy_name || ('Strategy #' + selectedStrategyObj.id) }}</div>
+                    <a-tag size="small" :color="strategyTypeColor(selectedStrategyObj)">{{ strategyTypeLabel(selectedStrategyObj) }}</a-tag>
+                  </div>
+                  <div class="strategy-summary-meta">
+                    <a-tag v-if="selectedStrategyObj.market_category" size="small">{{ selectedStrategyObj.market_category }}</a-tag>
+                    <a-tag v-if="selectedStrategyObj.symbol" size="small">{{ selectedStrategyObj.symbol }}</a-tag>
+                    <a-tag v-if="selectedStrategyObj.timeframe" size="small">{{ selectedStrategyObj.timeframe }}</a-tag>
+                  </div>
+                  <div class="strategy-summary-text">{{ strategySummaryText(selectedStrategyObj) }}</div>
+                  <a-button type="link" size="small" style="padding-left: 0;" @click="goToStrategyEditor(selectedStrategyObj)">
+                    {{ $t('backtest-center.strategy.goToAssistant') }}
+                  </a-button>
                 </div>
               </div>
 
-              <!-- 标的覆盖 -->
               <div class="section">
                 <div class="section-title">{{ $t('backtest-center.config.symbol') }}</div>
                 <a-select
@@ -379,7 +386,6 @@
                 </a-select>
               </div>
 
-              <!-- 时间周期 -->
               <div class="section">
                 <div class="section-title">
                   {{ $t('backtest-center.config.timeframe') }}
@@ -402,7 +408,6 @@
                 </a-radio-group>
               </div>
 
-              <!-- 日期 -->
               <div class="section">
                 <div class="section-title">{{ $t('backtest-center.config.dateRange') }}</div>
                 <div class="date-presets">
@@ -424,7 +429,6 @@
                 </a-row>
               </div>
 
-              <!-- 资金 -->
               <div class="section">
                 <div class="section-title">{{ $t('backtest-center.config.capital') }}</div>
                 <a-row :gutter="8">
@@ -484,7 +488,6 @@
                 </a-row>
               </div>
 
-              <!-- 运行 -->
               <div class="run-section">
                 <a-button
                   type="primary"
@@ -495,7 +498,7 @@
                   @click="runStrategyBacktest"
                 >
                   <a-icon v-if="!stRunning" type="thunderbolt" />
-                  {{ stRunning ? $t('backtest-center.running') : $t('backtest-center.strategy.runBacktest') }}
+                  {{ stRunning ? $t('backtest-center.strategy.running') : $t('backtest-center.strategy.runBacktest') }}
                 </a-button>
                 <a-button
                   block
@@ -504,13 +507,12 @@
                   @click="openHistory('strategy')"
                 >
                   <a-icon type="history" />
-                  {{ $t('backtest-center.indicator.history') }}
+                  {{ $t('backtest-center.strategy.history') }}
                 </a-button>
               </div>
             </div>
           </a-col>
 
-          <!-- 策略右侧结果 -->
           <a-col :xs="24" :md="15" :lg="16" class="result-col">
             <div class="result-panel">
               <result-view
@@ -518,6 +520,7 @@
                 :run-tip="stRunTip"
                 :has-result="stHasResult"
                 :result="stResult"
+                :user-id="userId"
                 :backtestRunId="stBacktestRunId"
                 :symbol="stSymbol"
                 :market="stMarket"
@@ -528,6 +531,7 @@
           </a-col>
         </a-row>
       </a-tab-pane>
+
     </a-tabs>
 
     <!-- 添加自选股弹窗 -->
@@ -538,6 +542,7 @@
       @cancel="showAddModal = false"
       :confirmLoading="addingStock"
       width="560px"
+      :wrap-class-name="isDarkTheme ? 'bc-modal-wrap bc-modal-wrap--dark' : 'bc-modal-wrap'"
     >
       <a-tabs v-model="addMarketTab" size="small" @change="onAddMarketTabChange">
         <a-tab-pane key="Crypto" tab="Crypto" />
@@ -584,6 +589,8 @@
       :visible="showHistoryDrawer"
       :userId="userId"
       :indicatorId="historyIndicatorId"
+      :strategyId="historyStrategyId"
+      :runType="historyRunType"
       :isMobile="false"
       @cancel="showHistoryDrawer = false"
       @view="handleViewRun"
@@ -600,10 +607,10 @@
 import moment from 'moment'
 import * as echarts from 'echarts'
 import { baseMixin } from '@/store/app-mixin'
-import request from '@/utils/request'
-import { getStrategyList } from '@/api/strategy'
+import request, { ANALYSIS_TIMEOUT } from '@/utils/request'
 import { getUserInfo } from '@/api/login'
 import { getWatchlist, addWatchlist, searchSymbols } from '@/api/market'
+import { getStrategyList, runStrategyBacktest as runStrategyBacktestApi } from '@/api/strategy'
 import BacktestHistoryDrawer from '@/views/indicator-analysis/components/BacktestHistoryDrawer.vue'
 import BacktestRunViewer from '@/views/indicator-analysis/components/BacktestRunViewer.vue'
 
@@ -634,6 +641,7 @@ const ResultView = {
     runTip: String,
     hasResult: Boolean,
     result: Object,
+    userId: [Number, String],
     backtestRunId: [Number, String],
     symbol: String,
     market: String,
@@ -641,29 +649,55 @@ const ResultView = {
     isDark: Boolean
   },
   data () {
-    return { chartInstance: null }
+    return {
+      chartInstance: null,
+      elapsedSec: 0,
+      elapsedTimer: null,
+      aiAnalyzing: false,
+      showAIResult: false,
+      aiResult: '',
+      aiMode: ''
+    }
+  },
+  mounted () {
+    if (this.running) this._startElapsed()
   },
   computed: {
+    aiModeLabel () {
+      if (this.aiMode === 'llm') return this.$t('dashboard.indicator.backtest.historyAIModeLLM')
+      if (this.aiMode === 'heuristic' || this.aiMode === 'heuristic_fallback') return this.$t('dashboard.indicator.backtest.historyAIModeRule')
+      return this.$t('dashboard.indicator.backtest.historyAIModeUnknown')
+    },
+    renderedAIHtml () {
+      return this.markdownToHtml(this.aiResult || '')
+    },
     pairedTrades () {
       const raw = (this.result && this.result.trades) || []
       const pairs = []
       let openTrade = null
       let idx = 1
-      for (const t of raw) {
+      for (let i = 0; i < raw.length; i++) {
+        const t = raw[i]
+        const nextTrade = raw[i + 1]
         const ty = (t.type || '').toLowerCase()
         if (ty.startsWith('open_') || ty === 'buy') {
           openTrade = t
         } else if (openTrade) {
+          const direction = openTrade.type.includes('long') || openTrade.type === 'buy' ? 'long' : 'short'
+          const closeReason = this.getCloseReason(ty, t, nextTrade)
           pairs.push({
             id: idx++,
-            type: openTrade.type.includes('long') || openTrade.type === 'buy' ? 'long' : 'short',
+            type: direction,
+            openAction: direction === 'long' ? 'openLong' : 'openShort',
+            closeReason,
+            closeType: ty,
             entryDate: openTrade.time || '',
             exitDate: t.time || '',
             entryPrice: openTrade.price,
             exitPrice: t.price,
             amount: openTrade.amount || t.amount || 0,
             profit: t.profit || 0,
-            balance: t.balance || 0
+            balance: t.balance != null ? t.balance : (openTrade.balance != null ? openTrade.balance : 0)
           })
           openTrade = null
         }
@@ -674,15 +708,21 @@ const ResultView = {
       return [
         { title: '#', dataIndex: 'id', width: 50 },
         { title: this.$t('backtest-center.result.colType'), dataIndex: 'type', scopedSlots: { customRender: 'type' }, width: 80 },
+        { title: this.$t('backtest-center.result.colOpenAction'), dataIndex: 'openAction', scopedSlots: { customRender: 'openAction' }, width: 90 },
+        { title: this.$t('backtest-center.result.colCloseReason'), dataIndex: 'closeReason', scopedSlots: { customRender: 'closeReason' }, width: 120 },
         { title: this.$t('backtest-center.result.colEntry'), dataIndex: 'entryDate', width: 140 },
         { title: this.$t('backtest-center.result.colExit'), dataIndex: 'exitDate', width: 140 },
         { title: this.$t('backtest-center.result.colEntryPrice'), dataIndex: 'entryPrice', scopedSlots: { customRender: 'price' }, width: 100 },
         { title: this.$t('backtest-center.result.colExitPrice'), dataIndex: 'exitPrice', scopedSlots: { customRender: 'price' }, width: 100 },
-        { title: this.$t('backtest-center.result.colProfit'), dataIndex: 'profit', scopedSlots: { customRender: 'profit' }, width: 120 }
+        { title: this.$t('backtest-center.result.colProfit'), dataIndex: 'profit', scopedSlots: { customRender: 'profit' }, width: 120 },
+        { title: this.$t('backtest-center.result.colBalance'), dataIndex: 'balance', scopedSlots: { customRender: 'money' }, width: 130 }
       ]
     }
   },
   watch: {
+    running (val) {
+      if (val) { this._startElapsed() } else { this._stopElapsed() }
+    },
     hasResult (val) {
       if (val) this.$nextTick(() => this.renderChart())
     },
@@ -692,8 +732,22 @@ const ResultView = {
   },
   beforeDestroy () {
     if (this.chartInstance) this.chartInstance.dispose()
+    this._stopElapsed()
   },
   methods: {
+    _startElapsed () {
+      this.elapsedSec = 0
+      clearInterval(this.elapsedTimer)
+      this.elapsedTimer = setInterval(() => { this.elapsedSec++ }, 1000)
+    },
+    _stopElapsed () {
+      clearInterval(this.elapsedTimer)
+      this.elapsedTimer = null
+    },
+    fmtElapsed (s) {
+      if (s < 60) return `${s}s`
+      return `${Math.floor(s / 60)}m ${s % 60}s`
+    },
     fmtPct (v) {
       if (v == null || isNaN(v)) return '--'
       const sign = v >= 0 ? '+' : ''
@@ -707,6 +761,182 @@ const ResultView = {
     fmtPrice (v) {
       if (v == null || isNaN(v)) return '--'
       return Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+    },
+    escapeHtml (str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+    },
+    formatInlineMarkdown (str) {
+      let text = this.escapeHtml(str)
+      text = text.replace(/`([^`]+)`/g, '<code>$1</code>')
+      text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      text = text.replace(/__([^_]+)__/g, '<strong>$1</strong>')
+      text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      text = text.replace(/_([^_]+)_/g, '<em>$1</em>')
+      return text
+    },
+    markdownToHtml (markdown) {
+      const text = String(markdown || '').replace(/\r\n/g, '\n').trim()
+      if (!text) return ''
+      const lines = text.split('\n')
+      const html = []
+      let inUl = false
+      let inOl = false
+      let inCode = false
+      let codeLines = []
+      const closeLists = () => {
+        if (inUl) {
+          html.push('</ul>')
+          inUl = false
+        }
+        if (inOl) {
+          html.push('</ol>')
+          inOl = false
+        }
+      }
+      for (const rawLine of lines) {
+        const line = rawLine.trimRight()
+        const trimmed = line.trim()
+        if (trimmed.startsWith('```')) {
+          closeLists()
+          if (!inCode) {
+            inCode = true
+            codeLines = []
+          } else {
+            html.push(`<pre><code>${this.escapeHtml(codeLines.join('\n'))}</code></pre>`)
+            inCode = false
+            codeLines = []
+          }
+          continue
+        }
+        if (inCode) {
+          codeLines.push(rawLine)
+          continue
+        }
+        if (!trimmed) {
+          closeLists()
+          continue
+        }
+        if (/^###\s+/.test(trimmed)) {
+          closeLists()
+          html.push(`<h3>${this.formatInlineMarkdown(trimmed.replace(/^###\s+/, ''))}</h3>`)
+          continue
+        }
+        if (/^##\s+/.test(trimmed)) {
+          closeLists()
+          html.push(`<h2>${this.formatInlineMarkdown(trimmed.replace(/^##\s+/, ''))}</h2>`)
+          continue
+        }
+        if (/^#\s+/.test(trimmed)) {
+          closeLists()
+          html.push(`<h1>${this.formatInlineMarkdown(trimmed.replace(/^#\s+/, ''))}</h1>`)
+          continue
+        }
+        if (/^【.+】$/.test(trimmed)) {
+          closeLists()
+          html.push(`<h3>${this.formatInlineMarkdown(trimmed.replace(/^【|】$/g, ''))}</h3>`)
+          continue
+        }
+        if (/^>\s+/.test(trimmed)) {
+          closeLists()
+          html.push(`<blockquote>${this.formatInlineMarkdown(trimmed.replace(/^>\s+/, ''))}</blockquote>`)
+          continue
+        }
+        if (/^[-*]\s+/.test(trimmed)) {
+          if (inOl) {
+            html.push('</ol>')
+            inOl = false
+          }
+          if (!inUl) {
+            html.push('<ul>')
+            inUl = true
+          }
+          html.push(`<li>${this.formatInlineMarkdown(trimmed.replace(/^[-*]\s+/, ''))}</li>`)
+          continue
+        }
+        if (/^\d+\.\s+/.test(trimmed)) {
+          if (inUl) {
+            html.push('</ul>')
+            inUl = false
+          }
+          if (!inOl) {
+            html.push('<ol>')
+            inOl = true
+          }
+          html.push(`<li>${this.formatInlineMarkdown(trimmed.replace(/^\d+\.\s+/, ''))}</li>`)
+          continue
+        }
+        closeLists()
+        html.push(`<p>${this.formatInlineMarkdown(trimmed)}</p>`)
+      }
+      closeLists()
+      if (inCode) html.push(`<pre><code>${this.escapeHtml(codeLines.join('\n'))}</code></pre>`)
+      return html.join('')
+    },
+    async copyAIResult () {
+      if (!this.aiResult) return
+      try {
+        await navigator.clipboard.writeText(this.aiResult)
+        this.$message.success(this.$t('dashboard.indicator.backtest.historyAICopySuccess'))
+      } catch (e) {
+        this.$message.warning(this.$t('dashboard.indicator.backtest.historyAICopyFailed'))
+      }
+    },
+    async handleAIAnalyze () {
+      const runId = this.backtestRunId
+      if (!this.userId || !runId) {
+        this.$message.warning(this.$t('dashboard.indicator.backtest.historyAISelectPrompt'))
+        return
+      }
+      this.aiAnalyzing = true
+      this.showAIResult = true
+      this.aiResult = ''
+      this.aiMode = ''
+      try {
+        const lang = (this.$i18n && this.$i18n.locale) ? this.$i18n.locale : 'zh-CN'
+        const res = await request({
+          url: '/api/indicator/backtest/aiAnalyze',
+          method: 'post',
+          timeout: ANALYSIS_TIMEOUT,
+          data: { userid: this.userId, runIds: [runId], lang }
+        })
+        if (res && res.code === 1 && res.data && res.data.analysis) {
+          this.aiResult = res.data.analysis
+          this.aiMode = res.data.mode || ''
+        } else {
+          this.aiResult = (res && res.msg) || this.$t('dashboard.indicator.backtest.historyNoAIResult')
+        }
+      } catch (e) {
+        this.aiResult = (e && e.message) || this.$t('dashboard.indicator.backtest.historyAIFailed')
+      } finally {
+        this.aiAnalyzing = false
+      }
+    },
+    getCloseReason (closeType, closeTrade, nextTrade) {
+      if (closeType.includes('_stop')) return 'stopLoss'
+      if (closeType.includes('_profit')) return 'takeProfit'
+      if (closeType.includes('_trailing')) return 'trailingStop'
+      if (closeType === 'liquidation') return 'liquidation'
+      if ((closeType === 'close_long' || closeType === 'close_short') && nextTrade) {
+        const nextType = String(nextTrade.type || '').toLowerCase()
+        const sameTime = String(nextTrade.time || '') === String(closeTrade.time || '')
+        if (sameTime && (nextType === 'open_long' || nextType === 'open_short')) return 'reverse'
+      }
+      return 'signal'
+    },
+    reasonColor (reason) {
+      return {
+        stopLoss: 'red',
+        takeProfit: 'green',
+        trailingStop: 'cyan',
+        reverse: 'orange',
+        liquidation: 'volcano',
+        signal: 'blue'
+      }[reason] || 'default'
     },
     renderChart () {
       const r = this.result
@@ -765,26 +995,46 @@ const ResultView = {
     const dk = this.isDark
 
     if (this.running) {
+      const steps = [
+        { key: 'fetch', label: this.$t('backtest-center.tip.fetching'), icon: 'cloud-download' },
+        { key: 'compute', label: this.$t('backtest-center.tip.computing'), icon: 'calculator' },
+        { key: 'analyze', label: this.$t('backtest-center.tip.analyzing'), icon: 'bar-chart' }
+      ]
+      const sec = this.elapsedSec
+      const activeIdx = sec < 4 ? 0 : sec < 10 ? 1 : 2
+
       return h('div', { class: 'running-overlay' }, [
         h('div', { class: 'running-content' }, [
-          h('div', { class: 'loading-pulse' }, [
-            h('div', { class: 'pulse-ring' }),
-            h('div', { class: 'pulse-icon' }, [h('a-icon', { props: { type: 'line-chart', style: 'font-size: 28px' } })])
+          h('div', { class: 'running-spinner' }, [
+            h('div', { class: 'spinner-track' }),
+            h('div', { class: 'spinner-fill' })
           ]),
-          h('div', { class: 'running-text' }, this.$t('backtest-center.running')),
-          h('div', { class: 'running-sub' }, this.runTip || '...'),
-          h('div', { class: 'running-dots' }, [
-            h('span', { class: 'dot dot1' }),
-            h('span', { class: 'dot dot2' }),
-            h('span', { class: 'dot dot3' })
-          ])
+
+          h('div', { class: 'running-title' }, this.$t('backtest-center.running')),
+          h('div', { class: 'running-elapsed' }, this.fmtElapsed(sec)),
+
+          h('div', { class: 'running-steps' }, steps.map((s, idx) =>
+            h('div', { class: ['step-item', idx < activeIdx ? 'done' : idx === activeIdx ? 'active' : ''] }, [
+              h('div', { class: 'step-icon' }, [
+                idx < activeIdx
+                  ? h('a-icon', { props: { type: 'check-circle', theme: 'filled' } })
+                  : h('a-icon', { props: { type: s.icon } })
+              ]),
+              h('span', { class: 'step-label' }, s.label)
+            ])
+          ))
         ])
       ])
     }
 
     if (!this.hasResult) {
       return h('div', { class: 'empty-result' }, [
-        h('div', { class: 'empty-icon' }, [h('a-icon', { props: { type: 'bar-chart' } })]),
+        h('div', { class: 'empty-icon' }, [
+          h('a-icon', {
+            props: { type: 'bar-chart' },
+            style: { color: dk ? '#177ddc' : '#1890ff' }
+          })
+        ]),
         h('h3', this.$t('backtest-center.emptyTitle')),
         h('p', this.$t('backtest-center.emptyDesc'))
       ])
@@ -804,12 +1054,32 @@ const ResultView = {
 
     return h('div', { class: 'result-content' }, [
       h('div', { class: 'result-header' }, [
-        h('span', { class: 'result-tag' }, [
-          h('a-tag', { props: { color: 'blue' } }, this.symbol),
-          h('a-tag', {}, this.market),
-          h('a-tag', {}, this.timeframe)
+        h('div', { class: 'result-header-left' }, [
+          h('span', { class: 'result-tag' }, [
+            h('a-tag', { props: { color: 'blue' } }, this.symbol),
+            h('a-tag', {}, this.market),
+            h('a-tag', {}, this.timeframe)
+          ]),
+          this.backtestRunId ? h('span', { class: 'run-id' }, 'Run #' + this.backtestRunId) : null
         ]),
-        this.backtestRunId ? h('span', { class: 'run-id' }, 'Run #' + this.backtestRunId) : null
+        h('div', { class: 'result-header-actions' }, [
+          h('a-button', {
+            props: {
+              type: 'primary',
+              ghost: true,
+              size: 'small',
+              loading: this.aiAnalyzing,
+              disabled: !this.backtestRunId
+            },
+            on: { click: this.handleAIAnalyze }
+          }, [
+            h('a-icon', {
+              props: { type: 'bulb' },
+              style: { color: dk ? '#177ddc' : undefined }
+            }),
+            this.$t('dashboard.indicator.backtest.historyAISuggest')
+          ])
+        ])
       ]),
 
       h('div', { class: 'metrics-cards' }, metricCards.map(m =>
@@ -822,7 +1092,13 @@ const ResultView = {
 
       h('div', { class: 'chart-section' }, [
         h('div', { class: 'chart-title' }, [
-          h('a-icon', { props: { type: 'area-chart' }, style: 'margin-right: 6px' }),
+          h('a-icon', {
+            props: { type: 'area-chart' },
+            style: {
+              marginRight: '6px',
+              color: dk ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.45)'
+            }
+          }),
           this.$t('backtest-center.result.equityCurve')
         ]),
         h('div', { ref: 'eqChart', class: 'equity-chart' })
@@ -830,9 +1106,22 @@ const ResultView = {
 
       h('div', { class: 'trades-section' }, [
         h('div', { class: 'chart-title' }, [
-          h('a-icon', { props: { type: 'swap' }, style: 'margin-right: 6px' }),
+          h('a-icon', {
+            props: { type: 'swap' },
+            style: {
+              marginRight: '6px',
+              color: dk ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.45)'
+            }
+          }),
           this.$t('backtest-center.result.tradeHistory'),
-          h('span', { style: 'font-weight:400;font-size:12px;margin-left:8px;color:#999' }, `(${this.pairedTrades.length})`)
+          h('span', {
+            style: {
+              fontWeight: 400,
+              fontSize: '12px',
+              marginLeft: '8px',
+              color: dk ? 'rgba(255,255,255,0.45)' : '#999'
+            }
+          }, `(${this.pairedTrades.length})`)
         ]),
         h('a-table', {
           props: {
@@ -840,11 +1129,13 @@ const ResultView = {
             dataSource: this.pairedTrades,
             pagination: { pageSize: 10, size: 'small', showTotal: (t) => `${t} trades` },
             size: 'small',
-            scroll: { x: 750 },
+            scroll: { x: 980 },
             rowKey: 'id'
           },
           scopedSlots: {
             type: (text) => h('a-tag', { props: { color: text === 'long' ? 'green' : 'red' }, style: 'margin:0' }, text === 'long' ? 'LONG' : 'SHORT'),
+            openAction: (text) => h('a-tag', { props: { color: text === 'openLong' ? 'green' : 'red' }, style: 'margin:0' }, this.$t('backtest-center.result.' + text)),
+            closeReason: (text) => h('a-tag', { props: { color: this.reasonColor(text) }, style: 'margin:0' }, this.$t('backtest-center.result.' + text)),
             price: (text) => h('span', { style: 'font-variant-numeric: tabular-nums' }, this.fmtPrice(text)),
             profit: (text) => h('span', {
               style: {
@@ -852,9 +1143,71 @@ const ResultView = {
                 fontWeight: '600',
                 fontVariantNumeric: 'tabular-nums'
               }
+            }, this.fmtMoney(text)),
+            money: (text) => h('span', {
+              style: {
+                color: dk ? 'rgba(255,255,255,0.88)' : '#262626',
+                fontWeight: '600',
+                fontVariantNumeric: 'tabular-nums'
+              }
             }, this.fmtMoney(text))
           }
         })
+      ]),
+      h('a-modal', {
+        props: {
+          title: this.$t('dashboard.indicator.backtest.historyAISuggestTitle'),
+          visible: this.showAIResult,
+          footer: null,
+          width: 900,
+          wrapClassName: this.isDark ? 'bc-modal-wrap bc-modal-wrap--dark' : 'bc-modal-wrap'
+        },
+        on: {
+          cancel: () => { this.showAIResult = false }
+        }
+      }, [
+        this.aiAnalyzing
+          ? h('div', { class: 'result-ai-loading' }, [
+            h('a-spin', { props: { size: 'large' } }),
+            h('div', { class: 'result-ai-loading-text' }, this.$t('dashboard.indicator.backtest.historyAISuggestLoading'))
+          ])
+          : h('div', { class: 'result-ai-content' }, [
+            h('div', { class: 'result-ai-meta-card' }, [
+              h('div', { class: 'result-ai-meta-top' }, [
+                h('div', { class: 'result-ai-meta-left' }, [
+                  h('a-tag', { props: { color: 'blue' } }, this.$t('dashboard.indicator.backtest.historyAISuggest')),
+                  h('a-tag', {}, this.aiModeLabel),
+                  this.backtestRunId ? h('a-tag', { props: { color: 'purple' } }, `#${this.backtestRunId}`) : null
+                ]),
+                h('div', { class: 'result-ai-meta-actions' }, [
+                  h('a-button', { props: { size: 'small' }, on: { click: this.copyAIResult } }, [
+                    h('a-icon', { props: { type: 'copy' } }),
+                    this.$t('dashboard.indicator.backtest.historyAICopy')
+                  ]),
+                  h('a-button', { props: { size: 'small', type: 'primary', ghost: true, disabled: !this.backtestRunId }, on: { click: this.handleAIAnalyze } }, [
+                    h('a-icon', { props: { type: 'redo' } }),
+                    this.$t('dashboard.indicator.backtest.historyAIRetry')
+                  ])
+                ])
+              ]),
+              h('a-alert', {
+                style: { marginTop: '12px' },
+                props: {
+                  type: 'info',
+                  showIcon: true,
+                  message: this.$t('dashboard.indicator.backtest.historyAIHint')
+                }
+              })
+            ]),
+            this.aiResult
+              ? h('div', { class: 'result-ai-markdown-card' }, [
+                h('div', {
+                  class: 'result-ai-markdown-content',
+                  domProps: { innerHTML: this.renderedAIHtml }
+                })
+              ])
+              : h('div', { class: 'result-ai-empty' }, this.$t('dashboard.indicator.backtest.historyNoAIResult'))
+          ])
       ])
     ])
   }
@@ -937,6 +1290,8 @@ export default {
       // history
       showHistoryDrawer: false,
       historyIndicatorId: null,
+      historyStrategyId: null,
+      historyRunType: '',
       showRunViewer: false,
       selectedRun: null
     }
@@ -1016,8 +1371,15 @@ export default {
       this.loadingStrategies = true
       try {
         const res = await getStrategyList()
-        if (res && res.data && Array.isArray(res.data)) this.strategies = res.data
-      } catch (e) { console.warn('Load strategies failed:', e) } finally { this.loadingStrategies = false }
+        const rows = Array.isArray(res?.data?.strategies) ? res.data.strategies : []
+        this.strategies = rows
+        if (this.selectedStrategyId) this.$nextTick(() => this.onStrategyChange())
+      } catch (e) {
+        console.warn('Load strategies failed:', e)
+        this.strategies = []
+      } finally {
+        this.loadingStrategies = false
+      }
     },
     async loadWatchlistData () {
       if (!this.userId) return
@@ -1179,13 +1541,45 @@ export default {
     onStrategyChange () {
       this.stHasResult = false
       const s = this.selectedStrategyObj
-      if (s && s.symbol) {
+      const tc = (s && s.trading_config) || {}
+      if (s && (s.symbol || tc.symbol)) {
         const mkt = s.market_category || s.market_type || 'Crypto'
-        const sym = s.symbol
+        const sym = s.symbol || tc.symbol
         this.stSelectedWatchlistKey = `${mkt}:${sym}`
         this.stMarket = mkt
         this.stSymbol = sym
+        this.stTimeframe = tc.timeframe || s.timeframe || this.stTimeframe
+        this.stInitialCapital = tc.initial_capital || s.initial_capital || this.stInitialCapital
+        this.stLeverage = tc.leverage || s.leverage || this.stLeverage
+        this.stCommission = tc.commission || 0
+        this.stSlippage = tc.slippage || 0
       }
+    },
+    strategyTypeLabel (strategy) {
+      if (!strategy) return 'Strategy'
+      if (strategy.strategy_type === 'ScriptStrategy' || strategy.strategy_mode === 'script') return 'Script'
+      return 'Indicator'
+    },
+    strategyTypeColor (strategy) {
+      if (!strategy) return 'blue'
+      return strategy.strategy_type === 'ScriptStrategy' || strategy.strategy_mode === 'script' ? 'purple' : 'blue'
+    },
+    strategySummaryText (strategy) {
+      if (!strategy) return ''
+      const tc = strategy.trading_config || {}
+      const parts = [
+        tc.trade_direction || '-',
+        tc.market_type || '-',
+        tc.timeframe || strategy.timeframe || '-'
+      ]
+      return parts.join(' / ')
+    },
+    goToStrategyEditor (strategy) {
+      if (!strategy || !strategy.id) return
+      this.$router.push({
+        path: '/trading-assistant',
+        query: { mode: 'edit', strategy_id: String(strategy.id) }
+      })
     },
 
     // ===== Run indicator backtest =====
@@ -1249,11 +1643,6 @@ export default {
       if (!this.canRunStrategy) return
       const s = this.selectedStrategyObj
       if (!s) return
-      const indicatorId = s.indicator_config ? s.indicator_config.indicator_id : s.indicator_id
-      if (!indicatorId) {
-        this.$message.warning(this.$t('backtest-center.strategy.noIndicator'))
-        return
-      }
       this.stRunning = true
       this.stHasResult = false
       this.stRunTip = ''
@@ -1264,33 +1653,18 @@ export default {
         this.stRunTip = tips[Math.min(Math.floor(sec / 5), tips.length - 1)]
       }, 1000)
       try {
-        const pct = v => Number(v || 0) / 100
-        const tc = s.trading_config || {}
-        const response = await request({
-          url: '/api/indicator/backtest',
-          method: 'post',
-          data: {
-            userid: this.userId || 1,
-            indicatorId,
-            symbol: this.stSymbol,
+        const response = await runStrategyBacktestApi({
+          strategyId: this.selectedStrategyId,
+          startDate: this.stStartDate.format('YYYY-MM-DD'),
+          endDate: this.stEndDate.format('YYYY-MM-DD'),
+          overrideConfig: {
             market: this.stMarket,
+            symbol: this.stSymbol,
             timeframe: this.stTimeframe,
-            startDate: this.stStartDate.format('YYYY-MM-DD'),
-            endDate: this.stEndDate.format('YYYY-MM-DD'),
             initialCapital: this.stInitialCapital,
-            commission: pct(this.stCommission),
-            slippage: pct(this.stSlippage),
+            commission: this.stCommission,
+            slippage: this.stSlippage,
             leverage: this.stLeverage,
-            tradeDirection: tc.trade_direction || 'long',
-            strategyConfig: {
-              risk: {
-                stopLossPct: pct(tc.stop_loss_pct || 0),
-                takeProfitPct: pct(tc.take_profit_pct || 0),
-                trailing: { enabled: !!tc.trailing_stop, pct: pct(tc.trailing_stop_pct || 0), activationPct: pct(tc.trailing_activation_pct || 0) }
-              },
-              position: { entryPct: pct(tc.entry_pct || 100) },
-              scale: { trendAdd: { enabled: false }, dcaAdd: { enabled: false }, trendReduce: { enabled: false }, adverseReduce: { enabled: false } }
-            },
             enableMtf: this.stMarket && this.stMarket.toLowerCase() === 'crypto'
           },
           timeout: 600000
@@ -1315,10 +1689,13 @@ export default {
     // ===== History =====
     openHistory (tab) {
       if (tab === 'strategy') {
-        const s = this.selectedStrategyObj
-        this.historyIndicatorId = s && s.indicator_config ? s.indicator_config.indicator_id : (s ? s.indicator_id : null)
+        this.historyIndicatorId = null
+        this.historyStrategyId = this.selectedStrategyId || null
+        this.historyRunType = 'strategy'
       } else {
         this.historyIndicatorId = this.selectedIndicatorId || null
+        this.historyStrategyId = null
+        this.historyRunType = ''
       }
       this.showHistoryDrawer = true
     },
@@ -1354,36 +1731,72 @@ export default {
 
 // ===== Config Panel =====
 .config-col .config-panel {
-  background: #fff; border-radius: 12px; padding: 16px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  background: linear-gradient(180deg, #ffffff 0%, #fcfdff 100%);
+  border-radius: 16px; padding: 18px;
+  border: 1px solid #eef2f7;
+  box-shadow: 0 10px 30px rgba(31, 41, 55, 0.08);
   max-height: calc(100vh - 200px); overflow-y: auto;
   &::-webkit-scrollbar { width: 4px; }
   &::-webkit-scrollbar-thumb { background: #d9d9d9; border-radius: 2px; }
 }
 .section {
   margin-bottom: 14px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid #f0f3f8;
+  background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
   .section-title {
-    font-size: 11px; font-weight: 700; color: #8c8c8c; margin-bottom: 6px;
-    text-transform: uppercase; letter-spacing: 0.5px;
+    font-size: 12px; font-weight: 700; color: #445066; margin-bottom: 10px;
+    text-transform: uppercase; letter-spacing: 0.6px;
     display: flex; align-items: center; gap: 6px;
     .hint { font-weight: 400; color: #bfbfbf; font-size: 11px; text-transform: none; }
   }
 }
-.field-label { font-size: 11px; color: #8c8c8c; margin-bottom: 2px; }
+.field-label { font-size: 12px; color: #6b7280; margin-bottom: 6px; font-weight: 500; }
 .tf-group {
   display: flex; flex-wrap: wrap;
   /deep/ .ant-radio-button-wrapper { flex: 1; text-align: center; min-width: 36px; padding: 0 6px; }
 }
-.date-presets { display: flex; gap: 4px; flex-wrap: wrap; }
-.run-section { margin-top: 8px; padding-top: 12px; border-top: 1px solid #f0f0f0; }
+.date-presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.run-section { margin-top: 14px; padding-top: 14px; border-top: 1px dashed #e5e7eb; }
 .strategy-info { margin-top: 6px; }
+.strategy-summary-card {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f7fbff 0%, #f5f7fa 100%);
+  border: 1px solid #e6f4ff;
+}
+.strategy-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.strategy-summary-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f1f1f;
+}
+.strategy-summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.strategy-summary-text {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #595959;
+  line-height: 1.6;
+}
 
 // ===== Result Panel =====
 .result-col .result-panel {
   background: #fff; border-radius: 12px; padding: 24px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.06); min-height: 500px;
 }
-.empty-result {
+/deep/ .empty-result {
   display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 450px;
   .empty-icon {
     width: 100px; height: 100px; border-radius: 50%;
@@ -1394,58 +1807,67 @@ export default {
   h3 { font-size: 20px; font-weight: 700; color: #333; margin-bottom: 8px; }
   p { font-size: 14px; color: #8c8c8c; max-width: 320px; text-align: center; line-height: 1.6; }
 }
-.running-overlay {
+/deep/ .running-overlay {
   display: flex; align-items: center; justify-content: center; min-height: 450px;
-  .running-content { text-align: center; }
-  .running-text { font-size: 17px; font-weight: 700; color: #333; margin-top: 20px; letter-spacing: 0.3px; }
-  .running-sub { font-size: 13px; color: #8c8c8c; margin-top: 6px; min-height: 20px; }
+  .running-content { text-align: center; width: 280px; }
 }
-.loading-pulse {
-  position: relative; width: 80px; height: 80px; margin: 0 auto;
-  .pulse-ring {
+/deep/ .running-spinner {
+  width: 64px; height: 64px; margin: 0 auto 20px; position: relative;
+  .spinner-track {
     position: absolute; inset: 0; border-radius: 50%;
-    border: 3px solid @primary-color;
-    animation: pulseRing 1.5s ease-out infinite;
+    border: 3px solid #f0f0f0;
   }
-  .pulse-icon {
-    position: absolute; inset: 0;
-    display: flex; align-items: center; justify-content: center;
-    color: @primary-color; font-size: 28px;
-    animation: pulseIcon 1.5s ease-in-out infinite;
+  .spinner-fill {
+    position: absolute; inset: 0; border-radius: 50%;
+    border: 3px solid transparent; border-top-color: @primary-color;
+    animation: spin 1s linear infinite;
   }
 }
-@keyframes pulseRing {
-  0% { transform: scale(0.8); opacity: 1; }
-  100% { transform: scale(1.6); opacity: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+/deep/ .running-title {
+  font-size: 17px; font-weight: 700; color: #333; margin-bottom: 4px;
+}
+/deep/ .running-elapsed {
+  font-size: 24px; font-weight: 300; color: @primary-color; margin-bottom: 24px;
+  font-variant-numeric: tabular-nums; letter-spacing: 1px;
+}
+/deep/ .running-steps {
+  display: flex; flex-direction: column; gap: 12px; text-align: left;
+  .step-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px; border-radius: 8px;
+    background: #fafafa; border: 1px solid #f0f0f0;
+    transition: all 0.3s;
+    .step-icon { font-size: 16px; color: #d9d9d9; flex-shrink: 0; }
+    .step-label { font-size: 13px; color: #999; }
+    &.active {
+      background: #e6f7ff; border-color: #91d5ff;
+      .step-icon { color: @primary-color; animation: pulseIcon 1.2s ease-in-out infinite; }
+      .step-label { color: @primary-color; font-weight: 600; }
+    }
+    &.done {
+      background: #f6ffed; border-color: #b7eb8f;
+      .step-icon { color: #52c41a; }
+      .step-label { color: #52c41a; }
+    }
+  }
 }
 @keyframes pulseIcon {
   0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
+  50% { transform: scale(1.15); }
 }
-.running-dots {
-  display: flex; justify-content: center; gap: 6px; margin-top: 16px;
-  .dot {
-    width: 8px; height: 8px; border-radius: 50%; background: @primary-color;
-    animation: dotBounce 1.4s ease-in-out infinite;
-  }
-  .dot1 { animation-delay: 0s; }
-  .dot2 { animation-delay: 0.2s; }
-  .dot3 { animation-delay: 0.4s; }
-}
-@keyframes dotBounce {
-  0%, 80%, 100% { transform: scale(0.4); opacity: 0.3; }
-  40% { transform: scale(1); opacity: 1; }
-}
-.result-content { padding: 0; }
-.result-header {
-  display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;
-  .result-tag { display: flex; gap: 4px; }
+/deep/ .result-content { padding: 0; }
+/deep/ .result-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; flex-wrap: wrap;
+  .result-header-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .result-header-actions { display: flex; align-items: center; gap: 8px; }
+  .result-tag { display: flex; gap: 4px; flex-wrap: wrap; }
   .run-id { font-size: 12px; color: #999; font-variant-numeric: tabular-nums; }
 }
-.metrics-cards {
+/deep/ .metrics-cards {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 24px;
 }
-.metric-card {
+/deep/ .metric-card {
   background: #fafafa; border-radius: 10px; padding: 14px 12px; text-align: center; border: 1px solid #f0f0f0;
   transition: transform 0.2s, box-shadow 0.2s;
   &:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
@@ -1455,7 +1877,7 @@ export default {
   &.positive .metric-value { color: #52c41a; }
   &.negative .metric-value { color: #f5222d; }
 }
-.chart-section {
+/deep/ .chart-section {
   margin-bottom: 24px;
   .chart-title {
     font-size: 14px; font-weight: 600; color: #333; margin-bottom: 12px;
@@ -1463,26 +1885,129 @@ export default {
   }
   .equity-chart { width: 100%; height: 300px; border-radius: 8px; }
 }
-.trades-section .chart-title {
+/deep/ .trades-section .chart-title {
   font-size: 14px; font-weight: 600; color: #333; margin-bottom: 12px;
   display: flex; align-items: center;
+}
+/deep/ .result-ai-loading {
+  padding: 26px 0;
+  text-align: center;
+}
+/deep/ .result-ai-loading-text {
+  margin-top: 12px;
+  color: #8c8c8c;
+}
+/deep/ .result-ai-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+/deep/ .result-ai-meta-card {
+  border: 1px solid #edf2f7;
+  border-radius: 12px;
+  padding: 14px;
+  background: linear-gradient(180deg, #fbfdff 0%, #f7faff 100%);
+}
+/deep/ .result-ai-meta-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+/deep/ .result-ai-meta-left,
+/deep/ .result-ai-meta-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/deep/ .result-ai-markdown-card {
+  border: 1px solid #eef2f7;
+  border-radius: 12px;
+  padding: 18px 20px;
+  background: linear-gradient(180deg, #ffffff 0%, #fcfcfc 100%);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
+}
+/deep/ .result-ai-markdown-content {
+  color: #262626;
+  font-size: 14px;
+  line-height: 1.8;
+  /deep/ h1,
+  /deep/ h2,
+  /deep/ h3 {
+    margin: 0 0 12px;
+    font-weight: 700;
+    color: #1f1f1f;
+    line-height: 1.5;
+  }
+  /deep/ h1 { font-size: 20px; }
+  /deep/ h2 { font-size: 17px; }
+  /deep/ h3 {
+    font-size: 15px;
+    padding-left: 10px;
+    border-left: 3px solid #1890ff;
+  }
+  /deep/ p { margin: 0 0 12px; color: #434343; }
+  /deep/ ul,
+  /deep/ ol { margin: 0 0 14px 20px; padding: 0; }
+  /deep/ li { margin-bottom: 8px; color: #434343; }
+  /deep/ strong { color: #262626; font-weight: 700; }
+  /deep/ em { color: #595959; }
+  /deep/ code {
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: #f5f5f5;
+    color: #cf1322;
+    font-size: 13px;
+  }
+  /deep/ pre {
+    margin: 0 0 14px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: #141414;
+    overflow-x: auto;
+  }
+  /deep/ pre code {
+    padding: 0;
+    background: transparent;
+    color: rgba(255,255,255,0.88);
+  }
+  /deep/ blockquote {
+    margin: 0 0 14px;
+    padding: 10px 14px;
+    border-left: 3px solid #91d5ff;
+    background: #f5fbff;
+    color: #595959;
+  }
+}
+/deep/ .result-ai-empty {
+  padding: 20px 0 8px;
+  text-align: center;
+  color: #8c8c8c;
 }
 
 // add symbol modal
 .add-item-active { background: #e6f7ff !important; }
 
 // ===== Dark Theme =====
-&.theme-dark {
-  background: #141414;
+  &.theme-dark {
+    background: #141414;
 
-  .page-header {
-    .page-title {
-      background: linear-gradient(135deg, #e0e6ed 0%, #c5ccd6 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
-      .title-icon { -webkit-text-fill-color: #40a9ff; }
+    .page-header {
+      .page-title {
+        background: linear-gradient(135deg, #e0e6ed 0%, #c5ccd6 100%);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        .title-icon {
+          -webkit-text-fill-color: unset;
+          color: #40a9ff !important;
+          background: none;
+          -webkit-background-clip: unset;
+          background-clip: unset;
+        }
+      }
+      .page-subtitle { color: rgba(255,255,255,0.45); }
     }
-    .page-subtitle { color: rgba(255,255,255,0.45); }
-  }
 
   .main-tabs {
     /deep/ .ant-tabs-bar { border-bottom-color: #303030; }
@@ -1492,12 +2017,17 @@ export default {
   }
 
   .config-panel {
-    background: #1f1f1f;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+    background: linear-gradient(180deg, #1f1f1f 0%, #191919 100%);
+    border-color: #2f3540;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
     &::-webkit-scrollbar-thumb { background: #434343; }
   }
-  .section .section-title { color: rgba(255,255,255,0.65); .hint { color: rgba(255,255,255,0.35); } }
-  .field-label { color: rgba(255,255,255,0.55); }
+  .section {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.01) 100%);
+    border-color: #2d323b;
+  }
+  .section .section-title { color: rgba(255,255,255,0.78); .hint { color: rgba(255,255,255,0.35); } }
+  .field-label { color: rgba(255,255,255,0.58); }
 
   /deep/ .ant-select .ant-select-selection {
     background: #141414; border-color: #434343; color: rgba(255,255,255,0.85);
@@ -1525,21 +2055,50 @@ export default {
     &:hover { border-color: #177ddc; color: #177ddc; }
   }
   .run-section { border-top-color: #303030; }
+  .strategy-summary-card {
+    background: linear-gradient(180deg, rgba(23,125,220,0.12) 0%, rgba(255,255,255,0.03) 100%);
+    border-color: rgba(23,125,220,0.22);
+  }
+  .strategy-summary-title { color: rgba(255,255,255,0.92); }
+  .strategy-summary-text { color: rgba(255,255,255,0.65); }
 
   .result-panel {
     background: #1f1f1f;
     box-shadow: 0 2px 8px rgba(0,0,0,0.45);
   }
 
-  .running-overlay {
-    .running-text { color: rgba(255,255,255,0.85); }
-    .running-sub { color: rgba(255,255,255,0.45); }
-    .loading-pulse .pulse-ring { border-color: #177ddc; }
-    .loading-pulse .pulse-icon { color: #177ddc; }
-    .running-dots .dot { background: #177ddc; }
+  /deep/ .running-spinner {
+    .spinner-track { border-color: #303030; }
+    .spinner-fill { border-top-color: #177ddc; }
+  }
+  /deep/ .running-title { color: rgba(255,255,255,0.85); }
+  /deep/ .running-elapsed { color: #177ddc; }
+  /deep/ .running-steps .step-item {
+    background: #141414; border-color: #303030;
+    .step-icon { color: rgba(255,255,255,0.38); }
+    .step-label { color: rgba(255,255,255,0.35); }
+    &.active {
+      background: rgba(23,125,220,0.1); border-color: rgba(23,125,220,0.3);
+      .step-icon { color: #177ddc; }
+      .step-label { color: #177ddc; }
+    }
+    &.done {
+      background: rgba(73,170,25,0.08); border-color: rgba(73,170,25,0.25);
+      .step-icon { color: #49aa19; }
+      .step-label { color: #49aa19; }
+    }
+  }
+  /deep/ .running-steps .step-item .step-icon .anticon {
+    color: inherit !important;
   }
 
-  .empty-result {
+  /deep/ .result-header-actions {
+    .ant-btn.ant-btn-primary.ant-btn-background-ghost .anticon {
+      color: #177ddc;
+    }
+  }
+
+  /deep/ .empty-result {
     .empty-icon {
       background: linear-gradient(135deg, rgba(23,125,220,0.15) 0%, rgba(23,125,220,0.08) 100%);
       color: #177ddc;
@@ -1548,9 +2107,39 @@ export default {
     p { color: rgba(255,255,255,0.45); }
   }
 
-  .result-header .run-id { color: rgba(255,255,255,0.45); }
+  /deep/ .result-header .run-id { color: rgba(255,255,255,0.45); }
+  /deep/ .result-ai-loading-text { color: rgba(255,255,255,0.45); }
+  /deep/ .result-ai-meta-card {
+    background: linear-gradient(180deg, rgba(23,125,220,0.08) 0%, rgba(255,255,255,0.02) 100%);
+    border-color: rgba(23,125,220,0.22);
+  }
+  /deep/ .result-ai-markdown-card {
+    background: linear-gradient(180deg, #171717 0%, #141414 100%);
+    border-color: #2f3540;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  }
+  /deep/ .result-ai-markdown-content {
+    color: rgba(255,255,255,0.82);
+    /deep/ h1,
+    /deep/ h2,
+    /deep/ h3 { color: rgba(255,255,255,0.92); }
+    /deep/ p,
+    /deep/ li { color: rgba(255,255,255,0.72); }
+    /deep/ strong { color: rgba(255,255,255,0.92); }
+    /deep/ em { color: rgba(255,255,255,0.62); }
+    /deep/ code {
+      background: rgba(255,255,255,0.08);
+      color: #ff9c6e;
+    }
+    /deep/ blockquote {
+      background: rgba(23,125,220,0.08);
+      color: rgba(255,255,255,0.68);
+      border-left-color: rgba(23,125,220,0.45);
+    }
+  }
+  /deep/ .result-ai-empty { color: rgba(255,255,255,0.45); }
 
-  .metric-card {
+  /deep/ .metric-card {
     background: #141414; border-color: #303030;
     &:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
     .metric-label { color: rgba(255,255,255,0.45); }
@@ -1560,7 +2149,7 @@ export default {
     &.negative .metric-value { color: #d32029; }
   }
 
-  .chart-section .chart-title, .trades-section .chart-title { color: rgba(255,255,255,0.85); }
+  /deep/ .chart-section .chart-title, /deep/ .trades-section .chart-title { color: rgba(255,255,255,0.85); }
 
   /deep/ .ant-table {
     background: transparent; color: rgba(255,255,255,0.85);
@@ -1575,5 +2164,71 @@ export default {
   }
   /deep/ .ant-empty-description { color: rgba(255,255,255,0.35); }
   /deep/ .ant-empty-image svg { fill: rgba(255,255,255,0.1); }
+
+  /deep/ .empty-icon .anticon {
+    color: #177ddc !important;
+  }
+}
+</style>
+
+<style lang="less">
+/* Modal is mounted on body — unscoped */
+.bc-modal-wrap--dark {
+  .ant-modal-content {
+    background: #1f1f1f;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  }
+  .ant-modal-header {
+    background: #1f1f1f;
+    border-bottom-color: #303030;
+  }
+  .ant-modal-title {
+    color: rgba(255, 255, 255, 0.88);
+  }
+  .ant-modal-close {
+    color: rgba(255, 255, 255, 0.55);
+    &:hover {
+      color: rgba(255, 255, 255, 0.88);
+    }
+  }
+  .ant-modal-body {
+    background: #1f1f1f;
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .ant-modal-footer {
+    background: #1f1f1f;
+    border-top-color: #303030;
+  }
+  .ant-tabs-bar {
+    border-bottom-color: #303030;
+  }
+  .ant-tabs-tab {
+    color: rgba(255, 255, 255, 0.55);
+    &:hover {
+      color: rgba(255, 255, 255, 0.85);
+    }
+  }
+  .ant-tabs-tab-active {
+    color: #177ddc !important;
+  }
+  .ant-input-search .ant-input {
+    background: #141414;
+    border-color: #434343;
+    color: rgba(255, 255, 255, 0.88);
+    &:hover,
+    &:focus {
+      border-color: #177ddc;
+    }
+  }
+  .ant-input-search-icon {
+    color: rgba(255, 255, 255, 0.45);
+  }
+  .ant-list-item {
+    color: rgba(255, 255, 255, 0.85);
+    border-bottom-color: #303030;
+  }
+  .ant-list-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
 }
 </style>

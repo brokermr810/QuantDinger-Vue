@@ -1,5 +1,45 @@
 <template>
   <div class="trading-assistant" :class="{ 'theme-dark': isDarkTheme }">
+    <div class="assistant-guide-bar">
+      <div class="assistant-guide-copy">
+        <div class="assistant-guide-eyebrow">{{ $t('trading-assistant.guide.eyebrow') }}</div>
+        <div class="assistant-guide-title">{{ $t('trading-assistant.guide.title') }}</div>
+        <div class="assistant-guide-desc">{{ $t('trading-assistant.guide.desc') }}</div>
+      </div>
+      <div class="assistant-guide-steps">
+        <div class="assistant-step-card">
+          <div class="assistant-step-index">1</div>
+          <div class="assistant-step-body">
+            <div class="assistant-step-title">{{ $t('trading-assistant.guide.step1Title') }}</div>
+            <div class="assistant-step-desc">{{ $t('trading-assistant.guide.step1Desc') }}</div>
+          </div>
+        </div>
+        <div class="assistant-step-card">
+          <div class="assistant-step-index">2</div>
+          <div class="assistant-step-body">
+            <div class="assistant-step-title">{{ $t('trading-assistant.guide.step2Title') }}</div>
+            <div class="assistant-step-desc">{{ $t('trading-assistant.guide.step2Desc') }}</div>
+          </div>
+        </div>
+        <div class="assistant-step-card">
+          <div class="assistant-step-index">3</div>
+          <div class="assistant-step-body">
+            <div class="assistant-step-title">{{ $t('trading-assistant.guide.step3Title') }}</div>
+            <div class="assistant-step-desc">{{ $t('trading-assistant.guide.step3Desc') }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="assistant-guide-actions">
+        <a-button @click="goToStrategyTab">
+          <a-icon type="appstore" />
+          {{ $t('trading-assistant.guide.secondary') }}
+        </a-button>
+        <a-button type="primary" @click="openCreateStrategyFromGuide">
+          <a-icon type="plus" />
+          {{ $t('trading-assistant.guide.primary') }}
+        </a-button>
+      </div>
+    </div>
     <a-tabs
       v-model="topTab"
       class="top-level-tabs"
@@ -43,7 +83,15 @@
           </div>
 
           <a-spin :spinning="loading">
-            <a-empty v-if="!loading && strategies.length === 0" :description="$t('trading-assistant.noStrategy')" />
+            <div v-if="!loading && strategies.length === 0" class="strategy-empty-state">
+              <a-empty :description="$t('trading-assistant.empty.title')" />
+              <div class="strategy-empty-desc">{{ $t('trading-assistant.empty.desc') }}</div>
+              <div class="strategy-empty-path">{{ $t('trading-assistant.empty.path') }}</div>
+              <a-button type="primary" @click="openCreateStrategyFromGuide">
+                <a-icon type="plus" />
+                {{ $t('trading-assistant.empty.primary') }}
+              </a-button>
+            </div>
             <div v-else class="strategy-grouped-list">
               <!-- 策略组列表 -->
               <div v-for="group in groupedStrategies.groups" :key="group.id" class="strategy-group">
@@ -145,6 +193,10 @@
                             <a-icon type="edit" />
                             {{ $t('trading-assistant.editStrategy') }}
                           </a-menu-item>
+                          <a-menu-item key="backtest">
+                            <a-icon type="experiment" />
+                            {{ $t('dashboard.indicator.action.backtest') }}
+                          </a-menu-item>
                           <a-menu-divider />
                           <a-menu-item key="delete" class="danger-item">
                             <a-icon type="delete" />
@@ -216,6 +268,10 @@
                       <a-menu-item key="edit">
                         <a-icon type="edit" />
                         {{ $t('trading-assistant.editStrategy') }}
+                      </a-menu-item>
+                      <a-menu-item key="backtest">
+                        <a-icon type="experiment" />
+                        {{ $t('dashboard.indicator.action.backtest') }}
                       </a-menu-item>
                       <a-menu-divider />
                       <a-menu-item key="delete" class="danger-item">
@@ -401,16 +457,20 @@
     <a-modal
       :visible="showFormModal"
       :title="editingStrategy ? $t('trading-assistant.editStrategy') : $t('trading-assistant.createStrategy') + (strategyMode === 'script' ? ' - ' + $t('trading-assistant.strategyMode.script') : '')"
-      :width="isMobile ? '95%' : 1100"
+      :width="isMobile ? '95%' : 1120"
       :confirmLoading="saving"
       @ok="handleSubmit"
       @cancel="handleCloseModal"
       :maskClosable="false"
-      :wrapClassName="isMobile ? 'mobile-modal' : ''"
-      :bodyStyle="{ maxHeight: '70vh', overflowY: 'auto' }">
+      :wrapClassName="strategyFormWrapClass"
+      :bodyStyle="{ maxHeight: '76vh', overflowY: 'auto', paddingBottom: '8px' }">
       <a-spin :spinning="loadingIndicators">
         <!-- Simple / Advanced mode toggle (only for signal mode) -->
         <div class="creation-mode-toggle" v-if="!editingStrategy && strategyMode !== 'script'">
+          <div class="mode-meta">
+            <div class="mode-title">{{ $t('trading-assistant.selectMode') }}</div>
+            <div class="mode-hint">{{ isSimpleMode ? $t('trading-assistant.form.simpleModeHint') : $t('trading-assistant.form.advancedModeHint') }}</div>
+          </div>
           <a-radio-group v-model="creationMode" size="small" button-style="solid">
             <a-radio-button value="simple">
               <a-icon type="rocket" /> {{ $t('trading-assistant.form.simpleMode') }}
@@ -419,7 +479,6 @@
               <a-icon type="setting" /> {{ $t('trading-assistant.form.advancedMode') }}
             </a-radio-button>
           </a-radio-group>
-          <span class="mode-hint">{{ isSimpleMode ? $t('trading-assistant.form.simpleModeHint') : $t('trading-assistant.form.advancedModeHint') }}</span>
         </div>
 
         <a-steps :current="displayCurrentStep" class="steps-container">
@@ -446,6 +505,7 @@
                     v-decorator="['indicator_id', { rules: [{ required: true, message: $t('trading-assistant.validation.indicatorRequired') }] }]"
                     :placeholder="$t('trading-assistant.placeholders.selectIndicator')"
                     show-search
+                    optionLabelProp="label"
                     :filter-option="filterIndicatorOption"
                     @focus="handleIndicatorSelectFocus"
                     @change="handleIndicatorChange"
@@ -454,9 +514,13 @@
                     <a-select-option
                       v-for="indicator in availableIndicators"
                       :key="String(indicator.id)"
-                      :value="String(indicator.id)">
+                      :value="String(indicator.id)"
+                      :label="getIndicatorOptionLabel(indicator)">
                       <div class="indicator-option">
-                        <span class="indicator-name">{{ indicator.name }}</span>
+                        <div class="indicator-option-main">
+                          <span class="indicator-name">{{ indicator.name }}</span>
+                          <span v-if="indicator.description" class="indicator-option-desc">{{ indicator.description }}</span>
+                        </div>
                         <a-tag v-if="indicator.type" size="small" :color="getIndicatorTypeColor(indicator.type)">
                           {{ getIndicatorTypeName(indicator.type) }}
                         </a-tag>
@@ -469,8 +533,16 @@
                 </a-form-item>
 
                 <a-form-item v-if="selectedIndicator" :label="$t('trading-assistant.form.indicatorDescription')">
-                  <div class="indicator-description">
-                    {{ selectedIndicator.description || $t('trading-assistant.form.noDescription') }}
+                  <div class="selected-indicator-card">
+                    <div class="selected-indicator-header">
+                      <span class="selected-indicator-name">{{ selectedIndicator.name }}</span>
+                      <a-tag v-if="selectedIndicator.type" size="small" :color="getIndicatorTypeColor(selectedIndicator.type)">
+                        {{ getIndicatorTypeName(selectedIndicator.type) }}
+                      </a-tag>
+                    </div>
+                    <div class="indicator-description">
+                      {{ selectedIndicator.description || $t('trading-assistant.form.noDescription') }}
+                    </div>
                   </div>
                 </a-form-item>
 
@@ -525,32 +597,139 @@
                   <a-input
                     v-decorator="['strategy_name', { rules: [{ required: true, message: $t('trading-assistant.validation.strategyNameRequired') }] }]"
                     :placeholder="$t('trading-assistant.placeholders.inputStrategyName')" />
+                  <div class="form-item-hint">
+                    {{ $t('trading-assistant.form.strategyNameHint') }}
+                  </div>
                 </a-form-item>
 
-                <!-- ===== Simple mode: show defaults summary + toggle ===== -->
-                <div v-if="isSimpleMode && !editingStrategy" class="simple-defaults-summary">
-                  <a-alert type="info" show-icon style="margin-bottom: 12px;">
-                    <template #message>
-                      <span>{{ $t('trading-assistant.form.simpleDefaultsHint') }}</span>
-                    </template>
-                    <template #description>
-                      <span>
-                        {{ $t('trading-assistant.form.klinePeriod') }}: <b>15m</b> ·
-                        {{ $t('trading-assistant.form.leverage') }}: <b>5x</b> ·
-                        {{ $t('trading-assistant.form.marketType') }}: <b>{{ $t('trading-assistant.form.marketTypeFutures') }}</b> ·
-                        {{ $t('dashboard.indicator.backtest.field.stopLossPct') }}: <b>3%</b> ·
-                        {{ $t('dashboard.indicator.backtest.field.takeProfitPct') }}: <b>6%</b>
-                      </span>
-                    </template>
-                  </a-alert>
-                  <a-button type="link" size="small" @click="showAdvancedSettings = !showAdvancedSettings" style="padding: 0; margin-bottom: 12px;">
-                    <a-icon :type="showAdvancedSettings ? 'up' : 'down'" />
-                    {{ showAdvancedSettings ? $t('trading-assistant.form.hideAdvancedSettings') : $t('trading-assistant.form.showAdvancedSettings') }}
-                  </a-button>
+                <div v-if="isSimpleMode && !editingStrategy" class="simple-essentials-card">
+                  <div class="simple-mode-hero">
+                    <div class="simple-mode-hero-main">
+                      <div class="simple-mode-kicker">{{ $t('trading-assistant.form.simpleModePreset') }}</div>
+                      <div class="simple-mode-hero-desc">{{ $t('trading-assistant.form.simpleModePresetValue') }}</div>
+                    </div>
+                    <div class="simple-mode-badges">
+                      <a-tag>15m</a-tag>
+                      <a-tag color="blue">{{ $t('trading-assistant.form.marketTypeFutures') }}</a-tag>
+                      <a-tag color="purple">5x</a-tag>
+                    </div>
+                  </div>
+                  <div class="section-block-title">
+                    <span>{{ $t('trading-assistant.form.simpleModeSectionCore') }}</span>
+                    <span class="section-block-desc">{{ $t('trading-assistant.form.simpleModeSectionCoreDesc') }}</span>
+                  </div>
+
+                  <a-form-item class="compact-form-item">
+                    <span slot="label" class="required-label">
+                      <span class="required-star">*</span>{{ $t('trading-assistant.form.symbol') }}
+                    </span>
+                    <a-select
+                      :value="selectedSymbols[0]"
+                      :placeholder="$t('trading-assistant.placeholders.selectSymbol')"
+                      show-search
+                      :filter-option="filterWatchlistOptionWithAdd"
+                      :loading="loadingWatchlist"
+                      @change="handleSimpleSymbolChange"
+                      allow-clear
+                      :getPopupContainer="(triggerNode) => triggerNode.parentNode">
+                      <a-select-option
+                        v-for="item in watchlist"
+                        :key="`${item.market}:${item.symbol}`"
+                        :value="`${item.market}:${item.symbol}`">
+                        <div class="symbol-option">
+                          <a-tag :color="getMarketColor(item.market)" style="margin-right: 8px; margin-bottom: 0;">
+                            {{ item.market }}
+                          </a-tag>
+                          <span class="symbol-name">{{ item.symbol }}</span>
+                          <span v-if="item.name" class="symbol-name-extra">{{ item.name }}</span>
+                        </div>
+                      </a-select-option>
+                      <a-select-option key="__add_symbol_option__" value="__add_symbol_option__" class="add-symbol-option">
+                        <div style="width: 100%; text-align: center; padding: 4px 0; color: #1890ff; cursor: pointer;">
+                          <a-icon type="plus" style="margin-right: 4px;" />
+                          <span>{{ $t('trading-assistant.form.addSymbol') }}</span>
+                        </div>
+                      </a-select-option>
+                    </a-select>
+                    <div class="form-item-hint">
+                      {{ $t('trading-assistant.form.symbolHintCrypto') }}
+                    </div>
+                  </a-form-item>
+
+                  <a-row :gutter="16" class="compact-grid-row">
+                    <a-col :xs="24" :sm="12">
+                      <a-form-item :label="$t('trading-assistant.form.initialCapital')">
+                        <a-input-number
+                          v-decorator="['initial_capital', { rules: [{ required: true, message: $t('trading-assistant.validation.initialCapitalRequired') }], initialValue: 1000 }]"
+                          :min="10"
+                          :step="100"
+                          :precision="2"
+                          style="width: 100%" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="24" :sm="12">
+                      <a-form-item :label="$t('trading-assistant.form.leverage')">
+                        <a-input-number
+                          v-decorator="['leverage', { initialValue: 5, rules: [{ required: true, message: $t('trading-assistant.validation.leverageRequired') }] }]"
+                          :min="1"
+                          :max="form.getFieldValue('market_type') === 'spot' ? 1 : 125"
+                          :step="1"
+                          style="width: 100%"
+                          :disabled="form.getFieldValue('market_type') === 'spot'" />
+                      </a-form-item>
+                    </a-col>
+                  </a-row>
+
+                  <a-row :gutter="16" class="compact-grid-row">
+                    <a-col :xs="24" :sm="12">
+                      <a-form-item :label="$t('trading-assistant.form.marketType')">
+                        <a-radio-group
+                          v-decorator="['market_type', { initialValue: 'swap' }]"
+                          @change="handleMarketTypeChange">
+                          <a-radio value="swap">{{ $t('trading-assistant.form.marketTypeFutures') }}</a-radio>
+                          <a-radio value="spot">{{ $t('trading-assistant.form.marketTypeSpot') }}</a-radio>
+                        </a-radio-group>
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="24" :sm="12">
+                      <a-form-item :label="$t('trading-assistant.form.tradeDirection')">
+                        <a-radio-group
+                          v-decorator="['trade_direction', { initialValue: 'long' }]"
+                          :disabled="form.getFieldValue('market_type') === 'spot'">
+                          <a-radio value="long">{{ $t('trading-assistant.form.tradeDirectionLong') }}</a-radio>
+                          <a-radio value="short" :disabled="form.getFieldValue('market_type') === 'spot'">
+                            {{ $t('trading-assistant.form.tradeDirectionShort') }}
+                          </a-radio>
+                          <a-radio value="both" :disabled="form.getFieldValue('market_type') === 'spot'">
+                            {{ $t('trading-assistant.form.tradeDirectionBoth') }}
+                          </a-radio>
+                        </a-radio-group>
+                      </a-form-item>
+                    </a-col>
+                  </a-row>
+
+                  <a-form-item :label="$t('trading-assistant.form.klinePeriod')">
+                    <a-select
+                      v-decorator="['timeframe', { initialValue: '15m', rules: [{ required: true }] }]"
+                      :placeholder="$t('trading-assistant.placeholders.selectKlinePeriod')"
+                      :getPopupContainer="(triggerNode) => triggerNode.parentNode">
+                      <a-select-option value="1m">{{ $t('trading-assistant.form.timeframe1m') }}</a-select-option>
+                      <a-select-option value="5m">{{ $t('trading-assistant.form.timeframe5m') }}</a-select-option>
+                      <a-select-option value="15m">{{ $t('trading-assistant.form.timeframe15m') }}</a-select-option>
+                      <a-select-option value="30m">{{ $t('trading-assistant.form.timeframe30m') }}</a-select-option>
+                      <a-select-option value="1H">{{ $t('trading-assistant.form.timeframe1H') }}</a-select-option>
+                      <a-select-option value="4H">{{ $t('trading-assistant.form.timeframe4H') }}</a-select-option>
+                      <a-select-option value="1D">{{ $t('trading-assistant.form.timeframe1D') }}</a-select-option>
+                    </a-select>
+                  </a-form-item>
                 </div>
 
                 <!-- ===== Strategy type: only show in advanced mode ===== -->
-                <div v-show="isAdvancedMode || editingStrategy || showAdvancedSettings">
+                <div v-if="isAdvancedMode || editingStrategy" class="advanced-settings-shell">
+                  <div class="section-block-title">
+                    <span>{{ $t('trading-assistant.form.advancedMode') }}</span>
+                    <span class="section-block-desc">{{ $t('trading-assistant.form.advancedModeHint') }}</span>
+                  </div>
                   <!-- 策略类型选择 -->
                   <a-form-item :label="$t('trading-assistant.form.strategyType')">
                     <a-radio-group
@@ -566,7 +745,7 @@
                 </div>
 
                 <!-- 截面策略配置 -->
-                <template v-if="form.getFieldValue('cs_strategy_type') === 'cross_sectional'">
+                <template v-if="(isAdvancedMode || editingStrategy) && form.getFieldValue('cs_strategy_type') === 'cross_sectional'">
                   <a-form-item :label="$t('trading-assistant.form.symbolList')">
                     <a-select
                       v-model="crossSectionalSymbols"
@@ -648,7 +827,7 @@
 
                 <!-- 单标的策略：原有的标的选择 -->
                 <a-form-item
-                  v-if="form.getFieldValue('cs_strategy_type') !== 'cross_sectional'"
+                  v-if="(isAdvancedMode || editingStrategy) && form.getFieldValue('cs_strategy_type') !== 'cross_sectional'"
                   :label="isEditMode ? $t('trading-assistant.form.symbol') : $t('trading-assistant.form.symbols')">
                   <!-- 编辑模式：单选 -->
                   <a-select
@@ -719,7 +898,7 @@
                 </a-form-item>
 
                 <!-- ===== Advanced trading params (capital/leverage/direction/timeframe etc.) ===== -->
-                <div v-show="isAdvancedMode || editingStrategy || showAdvancedSettings">
+                <div v-if="isAdvancedMode || editingStrategy">
 
                   <a-row :gutter="16">
                     <a-col :xs="24" :sm="24" :md="12" :lg="12">
@@ -909,11 +1088,13 @@
               v-model="strategyCode"
               :is-dark="isDarkTheme"
               :user-id="1"
+              :visible="showFormModal && strategyMode === 'script' && currentStep === 1"
+              :initial-template-key="pendingScriptTemplateKey"
             />
           </div>
 
           <!-- Step 2: params (backtest-like / trading params) — signal mode only -->
-          <div v-show="strategyMode !== 'script' && (currentStep === 1 || (isSimpleMode && currentStep === 0 && showAdvancedSettings))" class="step-content">
+          <div v-show="strategyMode !== 'script' && currentStep === 1" class="step-content">
             <!-- 指标策略：策略参数 -->
             <div v-if="strategyType === 'indicator'">
               <a-form :form="form" layout="vertical">
@@ -1211,125 +1392,167 @@
           <!-- Step 3: signal push & optional live trading (crypto only) -->
           <div v-show="currentStep === 2" class="step-content">
             <a-form :form="form" layout="vertical" autocomplete="off">
-              <a-form-item :label="$t('trading-assistant.form.executionMode')">
-                <a-radio-group
-                  v-decorator="['execution_mode', { initialValue: 'signal' }]"
-                  :disabled="!canUseLiveTrading"
-                  @change="onExecutionModeChange">
-                  <a-radio value="signal">{{ $t('trading-assistant.form.executionModeSignal') }}</a-radio>
-                  <a-radio value="live" :disabled="!canUseLiveTrading">{{ $t('trading-assistant.form.executionModeLive')
-                  }}</a-radio>
-                </a-radio-group>
-                <div v-if="!canUseLiveTrading" class="form-item-hint" style="color: #ff9800;">
-                  {{ $t('trading-assistant.form.liveTradingNotSupportedHint') }}
+              <div class="execution-step-layout">
+                <div class="execution-step-hero">
+                  <div class="simple-mode-kicker">{{ $t('trading-assistant.form.step2HeroTitle') }}</div>
+                  <div class="execution-step-hero-desc">{{ $t('trading-assistant.form.step2HeroDesc') }}</div>
                 </div>
-              </a-form-item>
 
-              <!-- Live trading disclaimer: must accept before configuring live trading -->
-              <a-form-item v-if="executionModeUi === 'live' && canUseLiveTrading" class="live-disclaimer-item">
-                <a-alert
-                  type="warning"
-                  showIcon
-                  style="margin-bottom: 8px"
-                  :message="$t('trading-assistant.liveDisclaimer.title')"
-                  :description="$t('trading-assistant.liveDisclaimer.content')" />
-                <a-checkbox
-                  v-decorator="['live_disclaimer_ack', { valuePropName: 'checked', initialValue: false }]"
-                  @change="onLiveDisclaimerAckChange">
-                  {{ $t('trading-assistant.liveDisclaimer.agree') }}
-                </a-checkbox>
-              </a-form-item>
-
-              <a-form-item :label="$t('trading-assistant.form.notifyChannels')">
-                <a-checkbox-group
-                  v-decorator="['notify_channels', { initialValue: ['browser'] }]"
-                  @change="onNotifyChannelsChange">
-                  <a-checkbox value="browser">{{ $t('trading-assistant.notify.browser') }}</a-checkbox>
-                  <a-checkbox value="email">{{ $t('trading-assistant.notify.email') }}</a-checkbox>
-                  <a-checkbox value="telegram">{{ $t('trading-assistant.notify.telegram') }}</a-checkbox>
-                  <a-checkbox value="discord">{{ $t('trading-assistant.notify.discord') }}</a-checkbox>
-                  <a-checkbox value="webhook">{{ $t('trading-assistant.notify.webhook') }}</a-checkbox>
-                  <a-checkbox value="phone">{{ $t('trading-assistant.notify.phone') }}</a-checkbox>
-                </a-checkbox-group>
-                <div class="form-item-hint">{{ $t('trading-assistant.form.notifyChannelsHint') }}</div>
-              </a-form-item>
-
-              <!-- Notification settings hint -->
-              <a-alert
-                v-if="unconfiguredChannels.length > 0"
-                type="warning"
-                showIcon
-                style="margin-bottom: 16px">
-                <template #message>
-                  <span>
-                    {{ $t('trading-assistant.form.notificationConfigMissing', { channels: unconfiguredChannels.join(', ') }) }}
-                    <router-link to="/profile" style="margin-left: 8px">
-                      <a-icon type="setting" /> {{ $t('trading-assistant.form.goToProfile') }}
-                    </router-link>
-                  </span>
-                </template>
-              </a-alert>
-
-              <a-alert
-                v-else-if="notifyChannelsUi.length > 0 && !notifyChannelsUi.includes('browser') || (notifyChannelsUi.length > 1)"
-                type="info"
-                showIcon
-                style="margin-bottom: 16px">
-                <template #message>
-                  <span>
-                    {{ $t('trading-assistant.form.notificationFromProfile') }}
-                    <router-link to="/profile" style="margin-left: 8px">
-                      <a-icon type="setting" /> {{ $t('trading-assistant.form.goToProfile') }}
-                    </router-link>
-                  </span>
-                </template>
-              </a-alert>
-
-              <a-divider v-if="executionModeUi === 'live' && canUseLiveTrading" />
-
-              <!-- Live trading: exchange credentials -->
-              <a-alert
-                v-if="executionModeUi === 'live' && canUseLiveTrading && !liveDisclaimerAckUi"
-                type="warning"
-                showIcon
-                style="margin-bottom: 12px"
-                :message="$t('trading-assistant.liveDisclaimer.blockTitle')"
-                :description="$t('trading-assistant.liveDisclaimer.blockDesc')" />
-
-              <div v-if="executionModeUi === 'live' && canUseLiveTrading && liveDisclaimerAckUi">
-                <a-alert
-                  type="info"
-                  show-icon
-                  style="margin-bottom: 12px;"
-                  :message="$t('trading-assistant.form.liveTradingConfigTitle')"
-                  :description="$t('trading-assistant.form.liveTradingConfigHint')" />
-
-                <!-- Unified Credential Selector (credentials managed in Profile → Exchange Config) -->
-                <a-form-item :label="$t('trading-assistant.form.savedCredential')">
-                  <a-select
-                    v-decorator="['credential_id', {
-                      rules: [{ required: true, message: $t('profile.exchange.noCredentialHint') }],
-                      getValueFromEvent: (val) => val || undefined
-                    }]"
-                    :placeholder="$t('trading-assistant.placeholders.selectSavedCredential')"
-                    allow-clear
-                    show-search
-                    option-filter-prop="children"
-                    :loading="loadingExchangeCredentials"
-                    @change="handleCredentialSelectChange">
-                    <a-select-option
-                      v-for="cred in filteredExchangeCredentials"
-                      :key="cred.id"
-                      :value="cred.id">
-                      {{ formatCredentialLabel(cred) }}
-                    </a-select-option>
-                  </a-select>
-                  <div class="form-item-hint" style="margin-top: 6px;">
-                    <router-link to="/profile?tab=exchange">
-                      <a-icon type="setting" style="margin-right: 4px;" />{{ $t('profile.exchange.goToManage') }}
-                    </router-link>
+                <div class="execution-section-card">
+                  <div class="section-block-title">
+                    <span>{{ $t('trading-assistant.form.executionSectionTitle') }}</span>
+                    <span class="section-block-desc">{{ $t('trading-assistant.form.executionSectionDesc') }}</span>
                   </div>
-                </a-form-item>
+
+                  <a-form-item :label="$t('trading-assistant.form.executionMode')" class="compact-form-item">
+                    <a-input
+                      v-decorator="['execution_mode', { initialValue: 'signal' }]"
+                      style="display: none;" />
+                    <div class="execution-mode-cards">
+                      <div
+                        :class="['execution-mode-card', { active: executionModeUi === 'signal' }]"
+                        @click="setExecutionModeUi('signal')">
+                        <div class="execution-mode-card-icon signal">
+                          <a-icon type="notification" />
+                        </div>
+                        <div class="execution-mode-card-body">
+                          <div class="execution-mode-card-title">{{ $t('trading-assistant.form.executionModeSignal') }}</div>
+                          <div class="execution-mode-card-desc">{{ $t('trading-assistant.form.executionModeSignalDesc') }}</div>
+                        </div>
+                        <a-icon v-if="executionModeUi === 'signal'" type="check-circle" theme="filled" class="execution-mode-card-check" />
+                      </div>
+
+                      <div
+                        :class="['execution-mode-card', 'live-card', { active: executionModeUi === 'live', disabled: !canUseLiveTrading }]"
+                        @click="canUseLiveTrading && setExecutionModeUi('live')">
+                        <div class="execution-mode-card-icon live">
+                          <a-icon type="thunderbolt" />
+                        </div>
+                        <div class="execution-mode-card-body">
+                          <div class="execution-mode-card-title">{{ $t('trading-assistant.form.executionModeLive') }}</div>
+                          <div class="execution-mode-card-desc">
+                            {{ canUseLiveTrading ? $t('trading-assistant.form.executionModeLiveDesc') : $t('trading-assistant.form.liveTradingNotSupportedHint') }}
+                          </div>
+                        </div>
+                        <a-icon
+                          v-if="executionModeUi === 'live' && canUseLiveTrading"
+                          type="check-circle"
+                          theme="filled"
+                          class="execution-mode-card-check" />
+                      </div>
+                    </div>
+                    <div v-if="!canUseLiveTrading" class="form-item-hint execution-warn-text">
+                      {{ $t('trading-assistant.form.liveTradingNotSupportedHint') }}
+                    </div>
+                  </a-form-item>
+
+                  <a-alert
+                    v-if="executionModeUi === 'live' && canUseLiveTrading"
+                    type="warning"
+                    showIcon
+                    class="section-inline-alert"
+                    :message="$t('trading-assistant.liveDisclaimer.title')"
+                    :description="$t('trading-assistant.liveDisclaimer.content')" />
+                </div>
+
+                <div class="execution-section-card">
+                  <div class="section-block-title">
+                    <span>{{ $t('trading-assistant.form.notificationSectionTitle') }}</span>
+                    <span class="section-block-desc">{{ $t('trading-assistant.form.notificationSectionDesc') }}</span>
+                  </div>
+
+                  <a-form-item :label="$t('trading-assistant.form.notifyChannels')" class="compact-form-item">
+                    <a-checkbox-group
+                      v-decorator="['notify_channels', { initialValue: ['browser'] }]"
+                      class="notify-channel-grid"
+                      @change="onNotifyChannelsChange">
+                      <a-checkbox value="browser">{{ $t('trading-assistant.notify.browser') }}</a-checkbox>
+                      <a-checkbox value="email">{{ $t('trading-assistant.notify.email') }}</a-checkbox>
+                      <a-checkbox value="telegram">{{ $t('trading-assistant.notify.telegram') }}</a-checkbox>
+                      <a-checkbox value="discord">{{ $t('trading-assistant.notify.discord') }}</a-checkbox>
+                      <a-checkbox value="webhook">{{ $t('trading-assistant.notify.webhook') }}</a-checkbox>
+                      <a-checkbox value="phone">{{ $t('trading-assistant.notify.phone') }}</a-checkbox>
+                    </a-checkbox-group>
+                    <div class="form-item-hint">{{ $t('trading-assistant.form.notifyChannelsHint') }}</div>
+                  </a-form-item>
+
+                  <a-alert
+                    v-if="unconfiguredChannels.length > 0"
+                    type="warning"
+                    showIcon
+                    class="section-inline-alert">
+                    <template #message>
+                      <span>
+                        {{ $t('trading-assistant.form.notificationConfigMissing', { channels: unconfiguredChannels.join(', ') }) }}
+                        <router-link to="/profile" style="margin-left: 8px">
+                          <a-icon type="setting" /> {{ $t('trading-assistant.form.goToProfile') }}
+                        </router-link>
+                      </span>
+                    </template>
+                  </a-alert>
+
+                  <a-alert
+                    v-else-if="notifyChannelsUi.length > 0 && !notifyChannelsUi.includes('browser') || (notifyChannelsUi.length > 1)"
+                    type="info"
+                    showIcon
+                    class="section-inline-alert">
+                    <template #message>
+                      <span>
+                        {{ $t('trading-assistant.form.notificationFromProfile') }}
+                        <router-link to="/profile" style="margin-left: 8px">
+                          <a-icon type="setting" /> {{ $t('trading-assistant.form.goToProfile') }}
+                        </router-link>
+                      </span>
+                    </template>
+                  </a-alert>
+                </div>
+
+                <div v-if="executionModeUi === 'live' && canUseLiveTrading" class="execution-section-card risk-section-card">
+                  <div class="section-block-title">
+                    <span>{{ $t('trading-assistant.form.riskSectionTitle') }}</span>
+                    <span class="section-block-desc">{{ $t('trading-assistant.form.riskSectionDesc') }}</span>
+                  </div>
+
+                  <a-alert
+                    type="warning"
+                    show-icon
+                    class="section-inline-alert"
+                    :message="$t('trading-assistant.form.liveTradingConfigTitle')"
+                    :description="$t('trading-assistant.form.liveTradingConfigHint')" />
+                </div>
+
+                <div v-if="executionModeUi === 'live' && canUseLiveTrading" class="execution-section-card">
+                  <div class="section-block-title">
+                    <span>{{ $t('trading-assistant.form.liveConnectionSectionTitle') }}</span>
+                    <span class="section-block-desc">{{ $t('trading-assistant.form.liveConnectionSectionDesc') }}</span>
+                  </div>
+
+                  <a-form-item :label="$t('trading-assistant.form.savedCredential')" class="compact-form-item">
+                    <a-select
+                      v-decorator="['credential_id', {
+                        rules: [{ required: true, message: $t('profile.exchange.noCredentialHint') }],
+                        getValueFromEvent: (val) => val || undefined
+                      }]"
+                      :placeholder="$t('trading-assistant.placeholders.selectSavedCredential')"
+                      allow-clear
+                      show-search
+                      option-filter-prop="children"
+                      :loading="loadingExchangeCredentials"
+                      @change="handleCredentialSelectChange">
+                      <a-select-option
+                        v-for="cred in filteredExchangeCredentials"
+                        :key="cred.id"
+                        :value="cred.id">
+                        {{ formatCredentialLabel(cred) }}
+                      </a-select-option>
+                    </a-select>
+                    <div class="form-item-hint" style="margin-top: 6px;">
+                      <router-link to="/profile?tab=exchange">
+                        <a-icon type="setting" style="margin-right: 4px;" />{{ $t('profile.exchange.goToManage') }}
+                      </router-link>
+                    </div>
+                  </a-form-item>
+                </div>
               </div>
             </a-form>
           </div>
@@ -1536,6 +1759,15 @@ export default {
     },
     isSimpleMode () {
       return this.creationMode === 'simple'
+    },
+    isSimpleCreateMode () {
+      return this.isSimpleMode && !this.editingStrategy
+    },
+    strategyFormWrapClass () {
+      const classes = ['strategy-form-modal']
+      if (this.isMobile) classes.push('mobile-modal')
+      if (this.isDarkTheme) classes.push('strategy-form-modal-dark')
+      return classes.join(' ')
     },
     // Map internal currentStep to displayed step index for simple mode
     displayCurrentStep () {
@@ -1862,9 +2094,12 @@ export default {
       // Simple / Advanced creation mode
       creationMode: 'simple', // 'simple' or 'advanced'
       showAdvancedSettings: false,
+      pendingRouteIndicatorId: '',
+      lastAutoStrategyName: '',
       // Strategy mode: 'signal' (indicator-based) or 'script' (code-based)
       strategyMode: '',
       strategyCode: '',
+      pendingScriptTemplateKey: '',
       showModeSelector: false,
       // Only indicator strategy in local mode
       strategyType: 'indicator',
@@ -1958,12 +2193,9 @@ export default {
         const indicatorId = this.$route.query.indicator_id
         if (indicatorId) {
           this.strategyMode = 'signal'
+          this.creationMode = 'simple'
+          this.pendingRouteIndicatorId = String(indicatorId)
           this._openCreateModal()
-          this.$nextTick(() => {
-            try {
-              this.form.setFieldsValue({ indicator_id: parseInt(indicatorId) })
-            } catch (e) { /* ignore */ }
-          })
         } else {
           this.handleCreateStrategy()
         }
@@ -1974,6 +2206,15 @@ export default {
     this.stopEquityPolling()
   },
   methods: {
+    goToStrategyTab () {
+      this.topTab = 'strategy'
+    },
+    openCreateStrategyFromGuide () {
+      this.topTab = 'strategy'
+      this.$nextTick(() => {
+        this.handleCreateStrategy()
+      })
+    },
     async loadUserNotificationSettings () {
       // Load user's default notification settings from profile
       try {
@@ -2331,6 +2572,15 @@ export default {
         this.form && this.form.setFieldsValue && this.form.setFieldsValue({ exchange_id: undefined })
       } catch (e) { }
     },
+    handleSimpleSymbolChange (val) {
+      if (val === '__add_symbol_option__') {
+        this.showAddSymbolModal = true
+        this.loadHotSymbols(this.addSymbolMarket)
+        return
+      }
+      const values = val ? [val] : []
+      this.handleMultiSymbolChange(values)
+    },
     handleMultiSymbolChange (vals) {
       // vals: array like ["Crypto:BTC/USDT", "Crypto:ETH/USDT"]
       this.selectedSymbols = vals || []
@@ -2491,12 +2741,6 @@ export default {
       const v = e && e.target ? e.target.value : e
       this.executionModeUi = v || 'signal'
 
-      // Reset disclaimer ack when switching execution mode
-      this.liveDisclaimerAckUi = false
-      try {
-        this.form && this.form.setFieldsValue && this.form.setFieldsValue({ live_disclaimer_ack: false })
-      } catch (err) { }
-
       // If market doesn't support live trading, force signal mode
       if (!this.canUseLiveTrading && this.executionModeUi !== 'signal') {
         this.executionModeUi = 'signal'
@@ -2504,6 +2748,13 @@ export default {
           this.form && this.form.setFieldsValue && this.form.setFieldsValue({ execution_mode: 'signal' })
         } catch (err) { }
       }
+    },
+    setExecutionModeUi (mode) {
+      const targetMode = mode || 'signal'
+      this.onExecutionModeChange(targetMode)
+      try {
+        this.form && this.form.setFieldsValue && this.form.setFieldsValue({ execution_mode: targetMode })
+      } catch (err) { }
     },
     onLiveDisclaimerAckChange (e) {
       const checked = !!(e && e.target && e.target.checked)
@@ -2559,29 +2810,28 @@ export default {
     handleCreateStrategy () {
       this.isEditMode = false
       this.editingStrategy = null
+      this.creationMode = 'simple'
       this.strategyMode = ''
       this.strategyCode = ''
+      this.pendingScriptTemplateKey = ''
       this.showModeSelector = true
       this.showFormModal = false
     },
     handleModeSelect (mode) {
       this.strategyMode = mode
+      this.pendingScriptTemplateKey = ''
       this.showModeSelector = false
       this._openCreateModal()
     },
     handleUseTemplate (templateKey) {
       this.strategyMode = 'script'
+      this.pendingScriptTemplateKey = templateKey
       this.showModeSelector = false
       this._openCreateModal()
-      this.$nextTick(() => {
-        const editor = this.$refs.strategyEditor
-        if (editor && editor.loadTemplate) {
-          editor.loadTemplate(templateKey)
-        }
-      })
     },
     _openCreateModal () {
       this.strategyType = 'indicator'
+      this.creationMode = this.editingStrategy ? 'advanced' : 'simple'
       this.currentStep = 0
       this.currentExchangeId = ''
       this.currentBrokerId = 'ibkr'
@@ -2597,20 +2847,30 @@ export default {
       this.selectedMarketCategory = 'Crypto'
       this.selectedSymbols = []
       this.showAdvancedSettings = false
+      const defaultStrategyName = this.buildStrategyDefaultName()
+      this.lastAutoStrategyName = defaultStrategyName
 
       this.form.resetFields()
       this.form.setFieldsValue({
+        strategy_name: defaultStrategyName,
         execution_mode: 'signal',
         notify_channels: ['browser'],
         save_credential: false,
-        live_disclaimer_ack: false
+        live_disclaimer_ack: false,
+        initial_capital: 1000,
+        market_type: 'swap',
+        leverage: 5,
+        trade_direction: 'long',
+        timeframe: '15m',
+        cs_strategy_type: 'single'
       })
       this.liveDisclaimerAckUi = false
       this.showFormModal = true
 
-      this.$nextTick(() => {
-        this.loadWatchlist()
-        this.loadIndicators()
+      this.$nextTick(async () => {
+        await this.loadWatchlist()
+        await this.loadIndicators()
+        this.applyPendingRouteIndicatorSelection()
         this.loadExchangeCredentials()
       })
     },
@@ -2623,7 +2883,9 @@ export default {
 
       this.strategyType = 'indicator'
       this.strategyMode = strategy.strategy_mode || 'signal'
+      this.creationMode = 'advanced'
       this.strategyCode = strategy.strategy_code || ''
+      this.pendingScriptTemplateKey = ''
 
       this.isEditMode = true
       this.editingStrategy = strategy
@@ -2989,12 +3251,15 @@ export default {
       this.strategyType = 'indicator'
       this.strategyMode = ''
       this.strategyCode = ''
+      this.pendingScriptTemplateKey = ''
       this.currentStep = 0
       this.currentExchangeId = ''
       this.selectedIndicator = null
       this.connectionTestResult = null
       this.indicatorsLoaded = false
       this.availableIndicators = []
+      this.pendingRouteIndicatorId = ''
+      this.lastAutoStrategyName = ''
       this.backtestCollapseKeys = ['risk']
       this.trailingEnabledUi = false
       this.entryPctMaxUi = 100
@@ -3020,6 +3285,9 @@ export default {
         case 'edit':
           this.handleEditStrategy(strategy)
           break
+        case 'backtest':
+          this.handleBacktestStrategy(strategy)
+          break
         case 'delete':
           this.handleDeleteStrategy(strategy)
           break
@@ -3027,6 +3295,16 @@ export default {
     },
     toggleGroup (groupId) {
       this.$set(this.collapsedGroups, groupId, !this.collapsedGroups[groupId])
+    },
+    handleBacktestStrategy (strategy) {
+      if (!strategy || !strategy.id) return
+      this.$router.push({
+        path: '/backtest-center',
+        query: {
+          tab: 'strategy',
+          strategy_id: String(strategy.id)
+        }
+      })
     },
     async handleGroupMenuClick (key, group) {
       const strategyIds = group.strategies.map(s => s.id)
@@ -3241,6 +3519,7 @@ export default {
 
           this.availableIndicators = indicators
           this.indicatorsLoaded = true
+          this.applyPendingRouteIndicatorSelection()
         } else {
           this.availableIndicators = []
           this.$message.warning(res.msg || this.$t('trading-assistant.messages.loadIndicatorsFailed'))
@@ -3255,6 +3534,7 @@ export default {
     async handleIndicatorChange (indicatorId) {
       const idStr = String(indicatorId)
       this.selectedIndicator = this.availableIndicators.find(ind => String(ind.id) === idStr)
+      this.applyAutoStrategyName(this.selectedIndicator)
 
       // 获取指标参数声明
       this.indicatorParams = []
@@ -3360,8 +3640,37 @@ export default {
       } catch (e) { }
     },
     filterIndicatorOption (input, option) {
-      const text = option.componentOptions.children[0].children[0].text
+      const text = option.componentOptions?.propsData?.label || ''
       return text.toLowerCase().indexOf(input.toLowerCase()) >= 0
+    },
+    getIndicatorOptionLabel (indicator) {
+      if (!indicator) return ''
+      return indicator.description ? `${indicator.name} - ${indicator.description}` : indicator.name
+    },
+    buildStrategyDefaultName (indicator) {
+      const baseName = indicator && indicator.name
+        ? indicator.name
+        : this.$t('trading-assistant.form.defaultStrategyName')
+      const suffix = this.$t('trading-assistant.form.defaultStrategySuffix')
+      return `${baseName}${suffix}`
+    },
+    applyAutoStrategyName (indicator) {
+      if (this.editingStrategy || !this.form || this.strategyMode === 'script') return
+      const nextName = this.buildStrategyDefaultName(indicator)
+      const currentName = this.form.getFieldValue('strategy_name')
+      if (!currentName || currentName === this.lastAutoStrategyName) {
+        this.form.setFieldsValue({ strategy_name: nextName })
+        this.lastAutoStrategyName = nextName
+      }
+    },
+    async applyPendingRouteIndicatorSelection () {
+      if (!this.pendingRouteIndicatorId || !this.form || this.loadingIndicators) return
+      const targetId = String(this.pendingRouteIndicatorId)
+      const target = this.availableIndicators.find(ind => String(ind.id) === targetId)
+      if (!target) return
+      this.form.setFieldsValue({ indicator_id: targetId })
+      await this.handleIndicatorChange(targetId)
+      this.pendingRouteIndicatorId = ''
     },
     filterSymbolOption (input, option) {
       return option.componentOptions.children[0].text.toLowerCase().indexOf(input.toLowerCase()) >= 0
@@ -3581,10 +3890,7 @@ export default {
       // ===== Signal mode (original logic) =====
       if (this.currentStep === 0) {
         const fieldsToValidate = ['indicator_id', 'strategy_name']
-
-        if (this.isAdvancedMode || this.editingStrategy) {
-          fieldsToValidate.push('initial_capital', 'market_type', 'leverage', 'trade_direction', 'timeframe')
-        }
+        fieldsToValidate.push('initial_capital', 'market_type', 'leverage', 'trade_direction', 'timeframe')
 
         if (this.isEditMode) {
           fieldsToValidate.push('symbol')
@@ -3715,12 +4021,6 @@ export default {
 
             // ===== Signal Strategy Submit (original logic) =====
             const isLive = this.canUseLiveTrading && values.execution_mode === 'live'
-
-            if (isLive && !values.live_disclaimer_ack) {
-              this.$message.warning(this.$t('trading-assistant.liveDisclaimer.required'))
-              this.saving = false
-              return
-            }
 
             if (isLive) {
               const credentialId = values.credential_id
@@ -3955,6 +4255,123 @@ export default {
   }
 }
 
+.assistant-guide-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(24, 144, 255, 0.14);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(24, 144, 255, 0.08) 0%, rgba(114, 46, 209, 0.06) 100%);
+
+  .assistant-guide-copy {
+    min-width: 0;
+    flex: 1 1 240px;
+  }
+
+  .assistant-guide-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    margin-bottom: 8px;
+    border-radius: 999px;
+    background: rgba(24, 144, 255, 0.12);
+    color: #1677ff;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .assistant-guide-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1f2937;
+  }
+
+  .assistant-guide-desc {
+    margin-top: 4px;
+    color: #475569;
+    line-height: 1.6;
+  }
+
+  .assistant-guide-steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    flex: 1 1 520px;
+  }
+
+  .assistant-step-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-height: 92px;
+    padding: 12px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.66);
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+  }
+
+  .assistant-step-index {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #1677ff 0%, #6d28d9 100%);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .assistant-step-body {
+    min-width: 0;
+  }
+
+  .assistant-step-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #1f2937;
+  }
+
+  .assistant-step-desc {
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #64748b;
+  }
+
+  .assistant-guide-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+}
+
+.strategy-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 28px 16px 32px;
+  text-align: center;
+
+  .strategy-empty-desc {
+    max-width: 420px;
+    color: #475569;
+    line-height: 1.7;
+  }
+
+  .strategy-empty-path {
+    font-size: 12px;
+    color: #64748b;
+  }
+}
+
 // 主色调变量
 @primary-color: #1890ff;
 @primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -3980,6 +4397,25 @@ export default {
   @media (max-width: 768px) {
     min-height: auto;
     margin: -24px;
+
+    .assistant-guide-bar {
+      flex-direction: column;
+      align-items: stretch;
+      margin: 0 12px 12px;
+      padding: 14px;
+
+      .assistant-guide-steps {
+        grid-template-columns: 1fr;
+      }
+
+      .assistant-guide-actions {
+        width: 100%;
+
+        .ant-btn {
+          flex: 1;
+        }
+      }
+    }
 
     .strategy-layout {
       height: auto;
@@ -5272,6 +5708,49 @@ export default {
   }
 }
 
+.theme-dark {
+  .assistant-guide-bar {
+    border-color: rgba(23, 125, 220, 0.28);
+    background: linear-gradient(135deg, rgba(23, 125, 220, 0.14) 0%, rgba(114, 46, 209, 0.12) 100%);
+
+    .assistant-guide-eyebrow {
+      background: rgba(23, 125, 220, 0.2);
+      color: #69c0ff;
+    }
+
+    .assistant-guide-title {
+      color: rgba(255, 255, 255, 0.92);
+    }
+
+    .assistant-guide-desc {
+      color: rgba(255, 255, 255, 0.72);
+    }
+
+    .assistant-step-card {
+      background: rgba(15, 23, 42, 0.38);
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .assistant-step-title {
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .assistant-step-desc {
+      color: rgba(255, 255, 255, 0.58);
+    }
+  }
+
+  .strategy-empty-state {
+    .strategy-empty-desc {
+      color: rgba(255, 255, 255, 0.72);
+    }
+
+    .strategy-empty-path {
+      color: rgba(255, 255, 255, 0.48);
+    }
+  }
+}
+
 /* AI filter box (Step 2) */
 .ai-filter-box {
   margin-top: 12px;
@@ -5328,21 +5807,246 @@ export default {
 .creation-mode-toggle {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 16px;
-  padding: 8px 12px;
+  padding: 14px 16px;
   background: rgba(24, 144, 255, 0.04);
   border-radius: 8px;
   border: 1px solid rgba(24, 144, 255, 0.12);
+
+  .mode-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .mode-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #262626;
+  }
 
   .mode-hint {
     color: rgba(0, 0, 0, 0.45);
     font-size: 12px;
   }
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
-.simple-defaults-summary {
-  margin-top: 8px;
+.section-block-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.section-block-desc {
+  font-size: 12px;
+  font-weight: 400;
+  color: #8c8c8c;
+}
+
+.simple-mode-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(24, 144, 255, 0.08) 0%, rgba(114, 46, 209, 0.06) 100%);
+  border: 1px solid rgba(24, 144, 255, 0.14);
+}
+
+.simple-mode-hero-main {
+  min-width: 0;
+}
+
+.simple-mode-kicker {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1890ff;
+  margin-bottom: 4px;
+}
+
+.simple-mode-hero-desc {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #595959;
+}
+
+.simple-mode-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.simple-essentials-card,
+.advanced-settings-shell,
+.selected-indicator-card {
+  padding: 20px;
+  margin-bottom: 18px;
+  border-radius: 12px;
+  background: #fafcff;
+  border: 1px solid rgba(24, 144, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.required-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.required-star {
+  color: #f5222d;
+  margin-right: 4px;
+}
+
+.compact-form-item {
+  margin-bottom: 18px;
+}
+
+.compact-grid-row {
+  margin-bottom: 4px;
+}
+
+.execution-step-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.execution-step-hero {
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(82, 196, 26, 0.08) 0%, rgba(24, 144, 255, 0.08) 100%);
+  border: 1px solid rgba(24, 144, 255, 0.14);
+}
+
+.execution-step-hero-desc {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #595959;
+}
+
+.execution-section-card {
+  padding: 18px 20px;
+  border-radius: 12px;
+  background: #fafcff;
+  border: 1px solid rgba(24, 144, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.section-inline-alert {
+  margin-top: 4px;
+}
+
+.notify-channel-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.execution-warn-text {
+  color: #ff9800;
+}
+
+.execution-mode-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.execution-mode-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-height: 110px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(24, 144, 255, 0.12);
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: rgba(24, 144, 255, 0.35);
+    box-shadow: 0 8px 24px rgba(24, 144, 255, 0.08);
+  }
+
+  &.active {
+    border-color: #1890ff;
+    background: linear-gradient(135deg, rgba(24, 144, 255, 0.08) 0%, rgba(24, 144, 255, 0.03) 100%);
+    box-shadow: 0 10px 28px rgba(24, 144, 255, 0.12);
+  }
+
+  &.disabled {
+    cursor: not-allowed;
+    opacity: 0.68;
+    background: #fafafa;
+
+    &:hover {
+      border-color: rgba(24, 144, 255, 0.12);
+      box-shadow: none;
+    }
+  }
+}
+
+.execution-mode-card-icon {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  font-size: 18px;
+
+  &.signal {
+    color: #1890ff;
+    background: rgba(24, 144, 255, 0.1);
+  }
+
+  &.live {
+    color: #fa8c16;
+    background: rgba(250, 140, 22, 0.12);
+  }
+}
+
+.execution-mode-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.execution-mode-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 6px;
+}
+
+.execution-mode-card-desc {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #8c8c8c;
+}
+
+.execution-mode-card-check {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  color: #1890ff;
+  font-size: 18px;
 }
 
 // 弹窗样式
@@ -5373,9 +6077,35 @@ export default {
     animation: fadeIn 0.3s;
   }
 
+  /deep/ .ant-form-item {
+    margin-bottom: 20px;
+  }
+
   @media (max-width: 768px) {
     min-height: 300px;
     padding: 16px 0;
+
+    .simple-mode-hero {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .simple-mode-badges {
+      width: 100%;
+    }
+
+    .notify-channel-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .execution-mode-cards {
+      grid-template-columns: 1fr;
+    }
+
+    .execution-section-card,
+    .execution-step-hero {
+      padding: 16px;
+    }
 
     /deep/ .ant-form-item-label {
       padding-bottom: 4px;
@@ -5487,20 +6217,115 @@ export default {
 .indicator-option {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 12px;
+
+  .indicator-option-main {
+    flex: 1;
+  }
 
   .indicator-name {
-    flex: 1;
+    display: block;
+    color: #262626;
+    font-weight: 600;
   }
 }
 
+.indicator-option-desc {
+  display: block;
+  margin-top: 2px;
+  color: #8c8c8c;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.selected-indicator-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.selected-indicator-name {
+  font-weight: 600;
+  color: #262626;
+}
+
 .indicator-description {
-  padding: 12px;
-  background-color: var(--bg-color-secondary, #f5f5f5);
   border-radius: 4px;
   color: var(--text-color, #666);
   font-size: 14px;
   line-height: 1.6;
+}
+
+.theme-dark {
+  .creation-mode-toggle,
+  .simple-essentials-card,
+  .advanced-settings-shell,
+  .selected-indicator-card {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .mode-title,
+  .section-block-title,
+  .selected-indicator-name,
+  .indicator-option .indicator-name {
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .mode-hint,
+  .section-block-desc,
+  .indicator-option-desc {
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .simple-mode-hero {
+    background: linear-gradient(135deg, rgba(24, 144, 255, 0.14) 0%, rgba(114, 46, 209, 0.12) 100%);
+    border-color: rgba(64, 169, 255, 0.18);
+  }
+
+  .execution-step-hero {
+    background: linear-gradient(135deg, rgba(82, 196, 26, 0.14) 0%, rgba(24, 144, 255, 0.14) 100%);
+    border-color: rgba(64, 169, 255, 0.18);
+  }
+
+  .execution-mode-card {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.08);
+
+    &:hover {
+      border-color: rgba(64, 169, 255, 0.3);
+      box-shadow: 0 8px 24px rgba(24, 144, 255, 0.12);
+    }
+
+    &.active {
+      background: linear-gradient(135deg, rgba(24, 144, 255, 0.16) 0%, rgba(24, 144, 255, 0.08) 100%);
+      border-color: #1890ff;
+    }
+
+    &.disabled {
+      background: rgba(255, 255, 255, 0.02);
+    }
+  }
+
+  .execution-mode-card-title {
+    color: #e0e6ed;
+  }
+
+  .execution-mode-card-desc {
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .simple-mode-kicker {
+    color: #69c0ff;
+  }
+
+  .simple-mode-hero-desc,
+  .execution-step-hero-desc {
+    color: rgba(255, 255, 255, 0.72);
+  }
 }
 
 .indicator-params-form {
@@ -5730,19 +6555,42 @@ body.dark {
   }
 
   /* --- 创建/编辑策略弹窗 --- */
-  .ant-modal-wrap .ant-modal-content {
+  .strategy-form-modal.strategy-form-modal-dark .ant-modal-content {
+    background: #1e222d;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+
+    .ant-modal-header {
+      background: linear-gradient(180deg, #252a36 0%, #1e222d 100%);
+      border-bottom-color: rgba(255, 255, 255, 0.06);
+
+      .ant-modal-title {
+        color: #e0e6ed;
+      }
+    }
+
+    .ant-modal-close-x {
+      color: rgba(255, 255, 255, 0.45);
+    }
+
+    .ant-modal-body {
+      color: #d1d4dc;
+      background: linear-gradient(180deg, rgba(19, 23, 31, 0.72) 0%, rgba(30, 34, 45, 0.9) 100%);
+    }
+
     .creation-mode-toggle {
       background: rgba(24, 144, 255, 0.08);
       border-color: rgba(24, 144, 255, 0.2);
 
+      .mode-title,
       .mode-hint {
-        color: rgba(255, 255, 255, 0.45);
+        color: rgba(255, 255, 255, 0.72);
       }
     }
   }
 
   /* --- Steps 步骤条 --- */
-  .ant-modal-wrap .ant-steps {
+  .strategy-form-modal.strategy-form-modal-dark .ant-steps {
     .ant-steps-item-title {
       color: rgba(255, 255, 255, 0.65) !important;
     }
@@ -5772,9 +6620,20 @@ body.dark {
   }
 
   /* --- Form 表单控件 --- */
-  .ant-modal-wrap {
+  .strategy-form-modal.strategy-form-modal-dark {
     .ant-form-item-label > label {
       color: rgba(255, 255, 255, 0.75);
+    }
+
+    .notify-channel-grid .ant-checkbox-wrapper {
+      display: flex;
+      align-items: center;
+      min-height: 40px;
+      padding: 0 12px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.72);
     }
 
     .ant-input,
@@ -5866,6 +6725,39 @@ body.dark {
     .ant-form-explain,
     .ant-form-extra {
       color: rgba(255, 255, 255, 0.35);
+    }
+
+    .simple-essentials-card,
+    .advanced-settings-shell,
+    .selected-indicator-card,
+    .execution-section-card {
+      background: rgba(255, 255, 255, 0.03);
+      border-color: rgba(255, 255, 255, 0.08);
+      box-shadow: none;
+    }
+
+    .simple-mode-hero {
+      background: linear-gradient(135deg, rgba(24, 144, 255, 0.16) 0%, rgba(114, 46, 209, 0.14) 100%);
+      border-color: rgba(64, 169, 255, 0.2);
+    }
+
+    .execution-step-hero {
+      background: linear-gradient(135deg, rgba(82, 196, 26, 0.16) 0%, rgba(24, 144, 255, 0.14) 100%);
+      border-color: rgba(64, 169, 255, 0.2);
+    }
+
+    .section-block-title,
+    .mode-title,
+    .selected-indicator-name {
+      color: #e0e6ed;
+    }
+
+    .section-block-desc,
+    .simple-mode-hero-desc,
+    .execution-step-hero-desc,
+    .indicator-description,
+    .form-item-hint {
+      color: rgba(255, 255, 255, 0.62);
     }
 
     /* AI filter box */

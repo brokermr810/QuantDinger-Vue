@@ -1,20 +1,24 @@
 <template>
   <div class="strategy-editor" :class="{ 'theme-dark': isDark }">
     <a-row :gutter="16" class="editor-layout">
-      <!-- Left: Code Editor -->
       <a-col :xs="24" :md="16" class="code-col">
         <div class="code-section">
           <div class="section-header">
-            <span class="section-title">
-              <a-icon type="code" /> {{ $t('trading-assistant.editor.title') }}
-            </span>
+            <div class="section-title-wrap">
+              <span class="section-title">
+                <a-icon type="code" /> {{ $t('trading-assistant.editor.title') }}
+              </span>
+              <a-tag v-if="selectedTemplate" color="blue" class="current-template-tag">
+                {{ $t(`trading-assistant.template.${selectedTemplate.key}`) }}
+              </a-tag>
+            </div>
             <div class="section-actions">
               <a-button
                 type="link"
                 size="small"
                 @click="handleVerify"
                 :loading="verifying"
-                style="color: #52c41a; font-weight: 600;"
+                class="verify-btn"
               >
                 <a-icon type="check-circle" />
                 {{ $t('trading-assistant.editor.verify') }}
@@ -25,16 +29,20 @@
         </div>
       </a-col>
 
-      <!-- Right: AI Panel / Templates / Docs -->
       <a-col :xs="24" :md="8" class="side-col">
         <a-tabs v-model="activeTab" size="small" class="side-tabs">
           <a-tab-pane key="templates" :tab="$t('trading-assistant.editor.templateTab')">
+            <div class="panel-intro">
+              <div class="panel-intro__title">{{ $t('trading-assistant.editor.templateIntroTitle') }}</div>
+              <div class="panel-intro__desc">{{ $t('trading-assistant.editor.templateIntroDesc') }}</div>
+            </div>
             <div class="template-list">
               <div
                 v-for="tpl in templates"
                 :key="tpl.key"
                 class="template-item"
-                @click="loadTemplate(tpl.key)"
+                :class="{ active: selectedTemplateKey === tpl.key }"
+                @click="loadTemplate(tpl.key, { focusParams: true, resetParams: true })"
               >
                 <div class="tpl-header">
                   <span class="tpl-icon">{{ tpl.icon }}</span>
@@ -49,11 +57,95 @@
             </div>
           </a-tab-pane>
 
+          <a-tab-pane key="params" :tab="$t('trading-assistant.editor.paramsTab')">
+            <div v-if="selectedTemplate" class="params-panel">
+              <div class="panel-intro">
+                <div class="panel-intro__title">
+                  {{ $t(`trading-assistant.template.${selectedTemplate.key}`) }}
+                </div>
+                <div class="panel-intro__desc">
+                  {{ $t(`trading-assistant.template.${selectedTemplate.key}Desc`) }}
+                </div>
+              </div>
+              <a-alert
+                type="info"
+                show-icon
+                class="params-tip"
+                :message="$t('trading-assistant.editor.paramsHint')"
+              />
+              <div class="param-list">
+                <div v-for="param in selectedTemplate.params" :key="param.name" class="param-item">
+                  <div class="param-item__label-row">
+                    <span class="param-item__label">{{ getParamLabel(param) }}</span>
+                    <span class="param-item__type">{{ getParamTypeLabel(param.type) }}</span>
+                  </div>
+                  <div v-if="getParamDescription(param)" class="param-item__desc">{{ getParamDescription(param) }}</div>
+                  <a-input-number
+                    v-if="param.type === 'number' || param.type === 'integer' || param.type === 'percent'"
+                    :value="templateParamValues[param.name]"
+                    :min="param.min"
+                    :max="param.max"
+                    :step="param.step || 1"
+                    :precision="param.type === 'integer' ? 0 : getParamPrecision(param)"
+                    style="width: 100%"
+                    @change="handleNumericParamChange(param, $event)"
+                  />
+                  <a-select
+                    v-else-if="param.type === 'select'"
+                    :value="templateParamValues[param.name]"
+                    style="width: 100%"
+                    @change="handleSelectParamChange(param, $event)"
+                  >
+                    <a-select-option
+                      v-for="option in (param.options || [])"
+                      :key="option.value"
+                      :value="option.value">
+                      {{ getOptionLabel(option) }}
+                    </a-select-option>
+                  </a-select>
+                  <div v-else-if="param.type === 'boolean'" class="param-item__switch">
+                    <a-switch
+                      :checked="!!templateParamValues[param.name]"
+                      @change="handleBooleanParamChange(param, $event)"
+                    />
+                    <span>{{ templateParamValues[param.name] ? $t('common.yes') : $t('common.no') }}</span>
+                  </div>
+                  <a-input
+                    v-else
+                    :value="templateParamValues[param.name]"
+                    @input="handleTextParamChange(param, $event.target.value)"
+                  />
+                </div>
+              </div>
+              <div class="params-actions">
+                <a-button @click="resetTemplateParams">
+                  {{ $t('trading-assistant.editor.resetTemplateParams') }}
+                </a-button>
+                <a-button type="primary" @click="applySelectedTemplateToCode" :disabled="!templateDirty">
+                  {{ $t('trading-assistant.editor.applyTemplateParams') }}
+                </a-button>
+              </div>
+            </div>
+            <a-empty v-else :description="$t('trading-assistant.editor.paramsEmpty')" />
+          </a-tab-pane>
+
           <a-tab-pane key="ai" :tab="$t('trading-assistant.editor.aiTab')">
             <div class="ai-panel">
-              <div class="ai-panel-title">
-                <a-icon type="robot" />
-                <span>{{ $t('trading-assistant.editor.aiGenerate') }}</span>
+              <div class="panel-intro">
+                <div class="panel-intro__title">
+                  <a-icon type="robot" />
+                  <span>{{ $t('trading-assistant.editor.aiGenerate') }}</span>
+                </div>
+                <div class="panel-intro__desc">{{ $t('trading-assistant.editor.aiHint') }}</div>
+              </div>
+              <div class="ai-suggestions">
+                <a-tag
+                  v-for="item in aiPromptSuggestions"
+                  :key="item.id"
+                  class="prompt-tag"
+                  @click="applyPromptSuggestion(item.value)">
+                  {{ item.label }}
+                </a-tag>
               </div>
               <a-textarea
                 v-model="aiPrompt"
@@ -80,6 +172,10 @@
 
           <a-tab-pane key="docs" :tab="$t('trading-assistant.editor.docsTab')">
             <div class="docs-panel">
+              <div class="panel-intro">
+                <div class="panel-intro__title">{{ $t('trading-assistant.editor.docsIntroTitle') }}</div>
+                <div class="panel-intro__desc">{{ $t('trading-assistant.editor.docsIntroDesc') }}</div>
+              </div>
               <div class="docs-content" v-html="apiDocsHtml"></div>
             </div>
           </a-tab-pane>
@@ -100,227 +196,12 @@ import 'codemirror/theme/eclipse.css'
 import 'codemirror/addon/edit/closebrackets'
 import 'codemirror/addon/edit/matchbrackets'
 import 'codemirror/addon/selection/active-line'
-
-const STRATEGY_TEMPLATES = {
-  trendFollowing: `"""
-Trend Following Strategy
-Uses EMA crossover with dynamic stop-loss
-"""
-
-def on_init(ctx):
-    ctx.fast_period = ctx.param('fast_period', 12)
-    ctx.slow_period = ctx.param('slow_period', 26)
-    ctx.stop_pct = ctx.param('stop_pct', 0.03)
-
-def on_bar(ctx, bar):
-    bars = ctx.bars(ctx.slow_period + 5)
-    if len(bars) < ctx.slow_period:
-        return
-
-    closes = [b['close'] for b in bars]
-    fast_ema = _ema(closes, ctx.fast_period)
-    slow_ema = _ema(closes, ctx.slow_period)
-
-    if fast_ema > slow_ema and not ctx.position:
-        ctx.buy(bar['close'], ctx.equity * 0.95 / bar['close'])
-        ctx.log(f"BUY at {bar['close']:.2f}")
-
-    elif fast_ema < slow_ema and ctx.position and ctx.position['side'] == 'long':
-        ctx.close_position()
-        ctx.log(f"SELL at {bar['close']:.2f}")
-
-    if ctx.position and ctx.position['side'] == 'long':
-        entry = ctx.position['entry_price']
-        if bar['close'] < entry * (1 - ctx.stop_pct):
-            ctx.close_position()
-            ctx.log(f"STOP LOSS at {bar['close']:.2f}")
-
-def _ema(data, period):
-    k = 2 / (period + 1)
-    ema = data[0]
-    for price in data[1:]:
-        ema = price * k + ema * (1 - k)
-    return ema
-`,
-  martingale: `"""
-Martingale Strategy
-Double position on each loss, with max layer control
-"""
-
-def on_init(ctx):
-    ctx.base_amount = ctx.param('base_amount', 100)
-    ctx.max_layers = ctx.param('max_layers', 5)
-    ctx.multiplier = ctx.param('multiplier', 2.0)
-    ctx.take_profit_pct = ctx.param('take_profit_pct', 0.02)
-    ctx.current_layer = 0
-
-def on_bar(ctx, bar):
-    if not ctx.position:
-        amount = ctx.base_amount * (ctx.multiplier ** ctx.current_layer)
-        if amount <= ctx.balance:
-            qty = amount / bar['close']
-            ctx.buy(bar['close'], qty)
-            ctx.log(f"Layer {ctx.current_layer}: BUY {qty:.4f} at {bar['close']:.2f}")
-    else:
-        entry = ctx.position['entry_price']
-        pnl_pct = (bar['close'] - entry) / entry
-
-        if pnl_pct >= ctx.take_profit_pct:
-            ctx.close_position()
-            ctx.current_layer = 0
-            ctx.log(f"TAKE PROFIT at {bar['close']:.2f}, reset layers")
-
-        elif pnl_pct <= -ctx.take_profit_pct:
-            ctx.close_position()
-            if ctx.current_layer < ctx.max_layers:
-                ctx.current_layer += 1
-                ctx.log(f"LOSS, escalate to layer {ctx.current_layer}")
-            else:
-                ctx.current_layer = 0
-                ctx.log(f"Max layers reached, reset")
-`,
-  grid: `"""
-Grid Trading Strategy
-Places buy/sell orders at equal intervals within a price range
-"""
-
-def on_init(ctx):
-    ctx.grid_upper = ctx.param('grid_upper', 70000)
-    ctx.grid_lower = ctx.param('grid_lower', 60000)
-    ctx.grid_levels = ctx.param('grid_levels', 10)
-    ctx.order_amount = ctx.param('order_amount', 100)
-    ctx.filled_grids = set()
-
-    spacing = (ctx.grid_upper - ctx.grid_lower) / ctx.grid_levels
-    ctx.grid_prices = [ctx.grid_lower + i * spacing for i in range(ctx.grid_levels + 1)]
-
-def on_bar(ctx, bar):
-    price = bar['close']
-    if price < ctx.grid_lower or price > ctx.grid_upper:
-        return
-
-    for i, gp in enumerate(ctx.grid_prices[:-1]):
-        upper_gp = ctx.grid_prices[i + 1]
-        grid_id = f"grid_{i}"
-
-        if price <= gp and grid_id not in ctx.filled_grids:
-            qty = ctx.order_amount / price
-            ctx.buy(price, qty)
-            ctx.filled_grids.add(grid_id)
-            ctx.log(f"Grid BUY at {price:.2f} (level {i})")
-
-        elif price >= upper_gp and grid_id in ctx.filled_grids:
-            qty = ctx.order_amount / price
-            ctx.sell(price, qty)
-            ctx.filled_grids.discard(grid_id)
-            ctx.log(f"Grid SELL at {price:.2f} (level {i})")
-`,
-  dca: `"""
-DCA (Dollar Cost Averaging) Strategy
-Periodic purchases with optional dip-buying
-"""
-
-def on_init(ctx):
-    ctx.buy_amount = ctx.param('buy_amount', 100)
-    ctx.dip_threshold = ctx.param('dip_threshold', 0.05)
-    ctx.dip_multiplier = ctx.param('dip_multiplier', 2.0)
-    ctx.bar_count = 0
-    ctx.buy_interval = ctx.param('buy_interval', 24)
-    ctx.last_buy_price = None
-
-def on_bar(ctx, bar):
-    ctx.bar_count += 1
-    price = bar['close']
-
-    is_dip = False
-    if ctx.last_buy_price and price < ctx.last_buy_price * (1 - ctx.dip_threshold):
-        is_dip = True
-
-    if ctx.bar_count % ctx.buy_interval == 0 or is_dip:
-        amount = ctx.buy_amount * (ctx.dip_multiplier if is_dip else 1.0)
-        if amount <= ctx.balance:
-            qty = amount / price
-            ctx.buy(price, qty)
-            ctx.last_buy_price = price
-            tag = " (DIP BUY)" if is_dip else ""
-            ctx.log(f"DCA BUY {qty:.6f} at {price:.2f}{tag}")
-`,
-  meanReversion: `"""
-Mean Reversion Strategy
-Bollinger Bands based: buy at lower band, sell at upper band
-"""
-
-def on_init(ctx):
-    ctx.period = ctx.param('period', 20)
-    ctx.std_mult = ctx.param('std_mult', 2.0)
-    ctx.position_pct = ctx.param('position_pct', 0.5)
-
-def on_bar(ctx, bar):
-    bars = ctx.bars(ctx.period + 5)
-    if len(bars) < ctx.period:
-        return
-
-    closes = [b['close'] for b in bars[-ctx.period:]]
-    mean = sum(closes) / len(closes)
-    std = (sum((c - mean) ** 2 for c in closes) / len(closes)) ** 0.5
-
-    upper = mean + ctx.std_mult * std
-    lower = mean - ctx.std_mult * std
-    price = bar['close']
-
-    if price <= lower and not ctx.position:
-        qty = (ctx.equity * ctx.position_pct) / price
-        ctx.buy(price, qty)
-        ctx.log(f"BUY at {price:.2f} (below lower band {lower:.2f})")
-
-    elif price >= upper and ctx.position and ctx.position['side'] == 'long':
-        ctx.close_position()
-        ctx.log(f"SELL at {price:.2f} (above upper band {upper:.2f})")
-
-    elif price >= mean and ctx.position and ctx.position['side'] == 'long':
-        pnl_pct = (price - ctx.position['entry_price']) / ctx.position['entry_price']
-        if pnl_pct > 0.01:
-            ctx.close_position()
-            ctx.log(f"CLOSE at mean {price:.2f}, profit {pnl_pct:.2%}")
-`,
-  breakout: `"""
-Breakout Strategy
-Enter when price breaks key resistance/support with volume confirmation
-"""
-
-def on_init(ctx):
-    ctx.lookback = ctx.param('lookback', 20)
-    ctx.volume_mult = ctx.param('volume_mult', 1.5)
-    ctx.stop_pct = ctx.param('stop_pct', 0.02)
-
-def on_bar(ctx, bar):
-    bars = ctx.bars(ctx.lookback + 5)
-    if len(bars) < ctx.lookback:
-        return
-
-    recent = bars[-ctx.lookback:]
-    high = max(b['high'] for b in recent[:-1])
-    low = min(b['low'] for b in recent[:-1])
-    avg_vol = sum(b['volume'] for b in recent[:-1]) / (len(recent) - 1)
-    price = bar['close']
-    vol = bar['volume']
-
-    if price > high and vol > avg_vol * ctx.volume_mult and not ctx.position:
-        qty = (ctx.equity * 0.9) / price
-        ctx.buy(price, qty)
-        ctx.log(f"BREAKOUT BUY at {price:.2f} (prev high: {high:.2f})")
-
-    elif price < low and ctx.position and ctx.position['side'] == 'long':
-        ctx.close_position()
-        ctx.log(f"BREAK DOWN, close at {price:.2f}")
-
-    if ctx.position and ctx.position['side'] == 'long':
-        entry = ctx.position['entry_price']
-        if price < entry * (1 - ctx.stop_pct):
-            ctx.close_position()
-            ctx.log(f"STOP LOSS at {price:.2f}")
-`
-}
+import {
+  SCRIPT_TEMPLATE_CATALOG,
+  getScriptTemplateByKey,
+  buildTemplateCode,
+  buildTemplateParamValues
+} from './scriptTemplateCatalog'
 
 const API_DOCS_MD = `
 <h4>Strategy API Reference</h4>
@@ -339,10 +220,10 @@ def on_stop(ctx):
     """Called when strategy stops"""</code></pre>
 
 <h5>Trading Actions</h5>
-<pre><code>ctx.buy(price, amount)     # Buy / Go long
-ctx.sell(price, amount)    # Sell / Go short
-ctx.close_position()       # Close current position
-ctx.cancel_all_orders()    # Cancel pending orders</code></pre>
+<pre><code>ctx.buy(price, amount)      # Buy / go long
+ctx.sell(price, amount)     # Sell / reduce long / go short
+ctx.close_position()        # Close current position
+ctx.cancel_all_orders()     # Cancel pending orders</code></pre>
 
 <h5>Context Properties</h5>
 <pre><code>ctx.position       # { side, amount, entry_price, unrealized_pnl }
@@ -353,10 +234,10 @@ ctx.symbol         # Trading symbol
 ctx.timeframe      # K-line timeframe</code></pre>
 
 <h5>Data Access</h5>
-<pre><code>ctx.bars(n=100)         # Get last N bars
-ctx.param(name, default) # Get strategy parameter
-ctx.indicator(id, params) # Call existing indicator
-ctx.log(message)         # Log a message</code></pre>
+<pre><code>ctx.bars(n=100)            # Get last N bars
+ctx.param(name, default)   # Get strategy parameter
+ctx.indicator(id, params)  # Call existing indicator
+ctx.log(message)           # Write strategy log</code></pre>
 `
 
 export default {
@@ -364,7 +245,9 @@ export default {
   props: {
     value: { type: String, default: '' },
     isDark: { type: Boolean, default: false },
-    userId: { type: [Number, String], default: 1 }
+    userId: { type: [Number, String], default: 1 },
+    visible: { type: Boolean, default: false },
+    initialTemplateKey: { type: String, default: '' }
   },
   data () {
     return {
@@ -374,20 +257,54 @@ export default {
       verifying: false,
       editor: null,
       apiDocsHtml: API_DOCS_MD,
-      templates: [
-        { key: 'trendFollowing', icon: '📈' },
-        { key: 'martingale', icon: '🔥' },
-        { key: 'grid', icon: '📐' },
-        { key: 'dca', icon: '💰' },
-        { key: 'meanReversion', icon: '🔄' },
-        { key: 'breakout', icon: '⚡' }
+      templates: SCRIPT_TEMPLATE_CATALOG,
+      selectedTemplateKey: '',
+      templateParamValues: {},
+      templateDirty: false,
+      refreshTimer: null
+    }
+  },
+  computed: {
+    selectedTemplate () {
+      return getScriptTemplateByKey(this.selectedTemplateKey)
+    },
+    aiPromptSuggestions () {
+      return [
+        {
+          id: 'improve',
+          label: this.$t('trading-assistant.editor.aiSuggestionImprove'),
+          value: this.$t('trading-assistant.editor.aiSuggestionImprovePrompt')
+        },
+        {
+          id: 'risk',
+          label: this.$t('trading-assistant.editor.aiSuggestionRisk'),
+          value: this.$t('trading-assistant.editor.aiSuggestionRiskPrompt')
+        },
+        {
+          id: 'explain',
+          label: this.$t('trading-assistant.editor.aiSuggestionExplain'),
+          value: this.$t('trading-assistant.editor.aiSuggestionExplainPrompt')
+        }
       ]
     }
   },
   mounted () {
-    this.$nextTick(() => this.initEditor())
+    this.$nextTick(() => {
+      this.initEditor()
+      if (this.initialTemplateKey) {
+        this.loadTemplate(this.initialTemplateKey, { focusParams: true, resetParams: true })
+      } else if (!this.value) {
+        this.$emit('input', this._getDefaultCode())
+      }
+    })
+    window.addEventListener('resize', this.scheduleEditorRefresh)
   },
   beforeDestroy () {
+    window.removeEventListener('resize', this.scheduleEditorRefresh)
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer)
+      this.refreshTimer = null
+    }
     if (this.editor) {
       if (typeof this.editor.toTextArea === 'function') {
         this.editor.toTextArea()
@@ -399,11 +316,23 @@ export default {
     value (newVal) {
       if (this.editor && this.editor.getValue() !== newVal) {
         this.editor.setValue(newVal || '')
+        this.scheduleEditorRefresh()
       }
     },
     isDark () {
       if (this.editor) {
         this.editor.setOption('theme', this.isDark ? 'monokai' : 'eclipse')
+      }
+      this.scheduleEditorRefresh()
+    },
+    visible (val) {
+      if (val) {
+        this.scheduleEditorRefresh()
+      }
+    },
+    initialTemplateKey (key) {
+      if (key && key !== this.selectedTemplateKey) {
+        this.loadTemplate(key, { focusParams: true, resetParams: true })
       }
     }
   },
@@ -421,12 +350,25 @@ export default {
         tabSize: 4,
         indentUnit: 4,
         indentWithTabs: false,
-        lineWrapping: true,
-        viewportMargin: Infinity
+        lineWrapping: false,
+        viewportMargin: Infinity,
+        gutters: ['CodeMirror-linenumbers']
       })
       this.editor.on('change', () => {
         this.$emit('input', this.editor.getValue())
       })
+      this.scheduleEditorRefresh()
+    },
+
+    scheduleEditorRefresh () {
+      if (this.refreshTimer) {
+        clearTimeout(this.refreshTimer)
+      }
+      this.refreshTimer = setTimeout(() => {
+        if (this.editor) {
+          this.editor.refresh()
+        }
+      }, 60)
     },
 
     _getDefaultCode () {
@@ -443,7 +385,6 @@ def on_bar(ctx, bar):
     # bar: { open, high, low, close, volume, timestamp }
     price = bar['close']
 
-    # Example: simple moving average
     bars = ctx.bars(20)
     if len(bars) < 20:
         return
@@ -460,15 +401,22 @@ def on_bar(ctx, bar):
 `
     },
 
-    loadTemplate (key) {
-      const code = STRATEGY_TEMPLATES[key]
-      if (code) {
-        if (this.editor) {
-          this.editor.setValue(code)
-        }
-        this.$emit('input', code)
-        this.activeTab = 'ai'
+    loadTemplate (key, { focusParams = false, resetParams = true } = {}) {
+      const template = getScriptTemplateByKey(key)
+      if (!template) return
+      this.selectedTemplateKey = key
+      if (resetParams || !this.templateParamValues || Object.keys(this.templateParamValues).length === 0) {
+        this.templateParamValues = buildTemplateParamValues(template)
       }
+      this.templateDirty = true
+      this.applySelectedTemplateToCode({ silent: true })
+      if (focusParams) {
+        this.activeTab = 'params'
+      }
+      if (!this.aiPrompt.trim()) {
+        this.aiPrompt = this.$t('trading-assistant.editor.aiPromptTemplateHint') + ' ' + this.$t(`trading-assistant.template.${template.key}`)
+      }
+      this.scheduleEditorRefresh()
     },
 
     getCode () {
@@ -477,9 +425,97 @@ def on_bar(ctx, bar):
 
     setCode (code) {
       if (this.editor) {
-        this.editor.setValue(code)
+        if (this.editor.getValue() !== code) {
+          this.editor.setValue(code)
+        } else {
+          this.$emit('input', code)
+        }
+      } else {
+        this.$emit('input', code)
       }
-      this.$emit('input', code)
+      this.scheduleEditorRefresh()
+    },
+
+    applySelectedTemplateToCode ({ silent = false } = {}) {
+      if (!this.selectedTemplate) return
+      const code = buildTemplateCode(this.selectedTemplate, this.templateParamValues)
+      this.setCode(code)
+      this.templateDirty = false
+      this.$emit('template-change', {
+        key: this.selectedTemplateKey,
+        params: { ...this.templateParamValues }
+      })
+      if (!silent) {
+        message.success(this.$t('trading-assistant.editor.templateApplied'))
+      }
+    },
+
+    resetTemplateParams () {
+      if (!this.selectedTemplate) return
+      this.templateParamValues = buildTemplateParamValues(this.selectedTemplate)
+      this.templateDirty = true
+      this.applySelectedTemplateToCode({ silent: false })
+    },
+
+    getParamLabel (param) {
+      const key = `trading-assistant.templateParam.${param.name}.label`
+      const value = this.$t(key)
+      return value === key ? param.name : value
+    },
+
+    getParamDescription (param) {
+      const key = `trading-assistant.templateParam.${param.name}.desc`
+      const value = this.$t(key)
+      return value === key ? '' : value
+    },
+
+    getParamTypeLabel (type) {
+      return this.$t(`trading-assistant.editor.paramType.${type}`)
+    },
+
+    getOptionLabel (option) {
+      if (!option) return ''
+      if (option.labelKey) {
+        const translated = this.$t(option.labelKey)
+        if (translated !== option.labelKey) return translated
+      }
+      return option.label || option.value
+    },
+
+    getParamPrecision (param) {
+      if (param.type === 'integer') return 0
+      const step = param.step
+      if (!step || Number.isInteger(step)) return 0
+      const stepText = String(step)
+      const parts = stepText.split('.')
+      return parts[1] ? parts[1].length : 0
+    },
+
+    handleNumericParamChange (param, value) {
+      const normalized = value === '' || value === null || value === undefined
+        ? param.default
+        : (param.type === 'integer' ? parseInt(value, 10) : Number(value))
+      this.$set(this.templateParamValues, param.name, normalized)
+      this.templateDirty = true
+    },
+
+    handleSelectParamChange (param, value) {
+      this.$set(this.templateParamValues, param.name, value)
+      this.templateDirty = true
+    },
+
+    handleBooleanParamChange (param, value) {
+      this.$set(this.templateParamValues, param.name, !!value)
+      this.templateDirty = true
+    },
+
+    handleTextParamChange (param, value) {
+      this.$set(this.templateParamValues, param.name, value)
+      this.templateDirty = true
+    },
+
+    applyPromptSuggestion (value) {
+      this.aiPrompt = value
     },
 
     async handleVerify () {
@@ -494,7 +530,7 @@ def on_bar(ctx, bar):
         if (res && res.success) {
           message.success(this.$t('trading-assistant.editor.verifySuccess'))
         } else {
-          message.error((res && res.message) || this.$t('trading-assistant.editor.verifyFailed'))
+          message.error((res && (res.msg || res.message)) || this.$t('trading-assistant.editor.verifyFailed'))
         }
       } catch (e) {
         message.error(this.$t('trading-assistant.editor.verifyFailed') + ': ' + (e.message || ''))
@@ -504,7 +540,10 @@ def on_bar(ctx, bar):
     },
 
     async handleAIGenerate () {
-      if (!this.aiPrompt.trim()) return
+      if (!this.aiPrompt.trim()) {
+        message.warning(this.$t('trading-assistant.editor.aiPromptRequired'))
+        return
+      }
       this.aiGenerating = true
       try {
         const res = await request({
@@ -514,10 +553,12 @@ def on_bar(ctx, bar):
         })
         if (res && res.code) {
           this.setCode(res.code)
-          message.success('OK')
+          message.success(this.$t('trading-assistant.editor.aiGenerateSuccess'))
+        } else {
+          message.error((res && (res.msg || res.message)) || this.$t('trading-assistant.editor.aiGenerateFailed'))
         }
       } catch (e) {
-        message.error('AI generation failed: ' + (e.message || ''))
+        message.error((e && e.message) || this.$t('trading-assistant.editor.aiGenerateFailed'))
       } finally {
         this.aiGenerating = false
       }
@@ -548,26 +589,88 @@ def on_bar(ctx, bar):
   padding: 8px 12px;
   background: #fafafa;
   border-bottom: 1px solid #e8e8e8;
+}
 
-  .section-title {
-    font-weight: 600;
-    font-size: 14px;
+.section-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
 
-    .anticon {
-      margin-right: 6px;
-    }
+.section-title {
+  font-weight: 600;
+  font-size: 14px;
+
+  .anticon {
+    margin-right: 6px;
   }
+}
+
+.current-template-tag {
+  margin-right: 0;
+}
+
+.verify-btn {
+  color: #52c41a;
+  font-weight: 600;
 }
 
 .code-editor-container {
   height: 420px;
   width: 100%;
+  display: flex;
+  flex-direction: column;
 
   /deep/ .CodeMirror {
+    flex: 1;
     height: 100%;
-    font-family: 'Fira Code', 'Consolas', monospace;
+    font-family: 'Courier New', Consolas, 'Liberation Mono', Menlo, monospace;
     font-size: 13px;
     line-height: 1.6;
+    background: #ffffff;
+  }
+
+  /deep/ .CodeMirror-scroll {
+    min-height: 100%;
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+  }
+
+  /deep/ .CodeMirror-gutters {
+    min-width: 48px;
+    border-right: 1px solid #e8e8e8;
+    background: linear-gradient(to right, #fafafa 0%, #f5f5f5 100%);
+  }
+
+  /deep/ .CodeMirror-linenumbers {
+    width: 44px !important;
+  }
+
+  /deep/ .CodeMirror-linenumber {
+    min-width: 36px;
+    padding: 0 8px 0 0;
+    text-align: right;
+    color: #999;
+    font-size: 12px;
+  }
+
+  /deep/ .CodeMirror-sizer {
+    margin-left: 0 !important;
+    min-height: 100% !important;
+  }
+
+  /deep/ .CodeMirror-lines {
+    padding: 12px 0;
+  }
+
+  /deep/ .CodeMirror pre.CodeMirror-line,
+  /deep/ .CodeMirror pre.CodeMirror-line-like {
+    padding: 0 12px 0 12px;
+  }
+
+  /deep/ .CodeMirror-cursor {
+    border-left: 2px solid #1890ff;
   }
 }
 
@@ -578,6 +681,30 @@ def on_bar(ctx, bar):
     height: calc(100% - 40px);
     overflow-y: auto;
   }
+}
+
+.panel-intro {
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+}
+
+.panel-intro__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.panel-intro__desc {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #8c8c8c;
 }
 
 .template-list {
@@ -592,7 +719,8 @@ def on_bar(ctx, bar):
   cursor: pointer;
   transition: all 0.2s;
 
-  &:hover {
+  &:hover,
+  &.active {
     border-color: #1890ff;
     background: #fafafa;
   }
@@ -601,16 +729,16 @@ def on_bar(ctx, bar):
     display: flex;
     align-items: center;
     margin-bottom: 4px;
+  }
 
-    .tpl-icon {
-      font-size: 16px;
-      margin-right: 8px;
-    }
+  .tpl-icon {
+    font-size: 16px;
+    margin-right: 8px;
+  }
 
-    .tpl-name {
-      font-weight: 600;
-      font-size: 14px;
-    }
+  .tpl-name {
+    font-weight: 600;
+    font-size: 14px;
   }
 
   .tpl-desc {
@@ -625,60 +753,108 @@ def on_bar(ctx, bar):
   }
 }
 
-.ai-panel {
-  padding: 4px 0;
-
-  .ai-panel-title {
-    font-weight: 600;
-    margin-bottom: 8px;
-    font-size: 14px;
-
-    .anticon {
-      margin-right: 6px;
-      color: #1890ff;
-    }
-  }
-
-  .ai-status {
-    margin-top: 8px;
-    color: #1890ff;
-    font-size: 13px;
-    text-align: center;
-  }
+.params-tip {
+  margin-bottom: 12px;
 }
 
-.docs-panel {
-  padding: 4px 0;
+.param-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 
-  .docs-content {
-    font-size: 13px;
-    line-height: 1.6;
+.param-item {
+  padding: 12px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #fff;
+}
 
-    /deep/ h4 {
-      font-size: 16px;
-      font-weight: 600;
-      margin-bottom: 12px;
-    }
+.param-item__label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
 
-    /deep/ h5 {
-      font-size: 14px;
-      font-weight: 600;
-      margin: 16px 0 8px;
-      color: #1890ff;
-    }
+.param-item__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #262626;
+}
 
-    /deep/ pre {
-      background: #f6f8fa;
-      padding: 12px;
-      border-radius: 6px;
-      overflow-x: auto;
-      font-size: 12px;
-      line-height: 1.5;
-    }
+.param-item__type {
+  font-size: 11px;
+  color: #8c8c8c;
+}
 
-    /deep/ code {
-      font-family: 'Fira Code', 'Consolas', monospace;
-    }
+.param-item__desc {
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8c8c8c;
+}
+
+.param-item__switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.params-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.ai-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.prompt-tag {
+  cursor: pointer;
+}
+
+.ai-status {
+  margin-top: 8px;
+  color: #1890ff;
+  font-size: 13px;
+  text-align: center;
+}
+
+.docs-content {
+  font-size: 13px;
+  line-height: 1.6;
+
+  /deep/ h4 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+
+  /deep/ h5 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 16px 0 8px;
+    color: #1890ff;
+  }
+
+  /deep/ pre {
+    background: #f6f8fa;
+    padding: 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  /deep/ code {
+    font-family: 'Courier New', Consolas, monospace;
   }
 }
 
@@ -690,10 +866,10 @@ def on_bar(ctx, bar):
   .section-header {
     background: #1a1e28;
     border-color: rgba(255, 255, 255, 0.1);
+  }
 
-    .section-title {
-      color: #e0e6ed;
-    }
+  .section-title {
+    color: #e0e6ed;
   }
 
   .side-tabs {
@@ -714,67 +890,99 @@ def on_bar(ctx, bar):
     }
   }
 
-  .template-item {
+  .panel-intro {
+    background: #1a1e28;
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .panel-intro__title,
+  .param-item__label {
+    color: #e0e6ed;
+  }
+
+  .panel-intro__desc,
+  .param-item__desc,
+  .param-item__type {
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  .template-item,
+  .param-item {
     border-color: rgba(255, 255, 255, 0.08);
     background: #1a1e28;
-
-    &:hover {
-      border-color: #177ddc;
-      background: rgba(23, 125, 220, 0.06);
-    }
-
-    .tpl-name {
-      color: #e0e6ed;
-    }
-
-    .tpl-desc {
-      color: rgba(255, 255, 255, 0.4);
-    }
   }
 
-  .ai-panel {
-    .ai-panel-title {
-      color: #e0e6ed;
-
-      .anticon {
-        color: #40a9ff;
-      }
-    }
-
-    /deep/ textarea.ant-input {
-      background: #141821;
-      border-color: rgba(255, 255, 255, 0.1);
-      color: #d1d4dc;
-
-      &::placeholder {
-        color: rgba(255, 255, 255, 0.25);
-      }
-
-      &:focus {
-        border-color: #1890ff;
-      }
-    }
-
-    .ai-status {
-      color: #40a9ff;
-    }
+  .template-item:hover,
+  .template-item.active {
+    border-color: #177ddc;
+    background: rgba(23, 125, 220, 0.06);
   }
 
-  .docs-panel .docs-content {
+  .tpl-name {
+    color: #e0e6ed;
+  }
+
+  .tpl-desc {
+    color: rgba(255, 255, 255, 0.4);
+  }
+
+  .prompt-tag {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  /deep/ textarea.ant-input,
+  /deep/ .ant-input,
+  /deep/ .ant-input-number,
+  /deep/ .ant-input-number-input,
+  /deep/ .ant-select-selection,
+  /deep/ .ant-select-selection--single {
+    background: #141821 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: #d1d4dc !important;
+  }
+
+  /deep/ .ant-select-selection-selected-value,
+  /deep/ .ant-select-selection-placeholder {
+    color: #d1d4dc !important;
+  }
+
+  .ai-status {
+    color: #40a9ff;
+  }
+
+  .docs-content {
     color: rgba(255, 255, 255, 0.75);
+  }
 
-    /deep/ h4 {
-      color: #e0e6ed;
+  .docs-content /deep/ h4 {
+    color: #e0e6ed;
+  }
+
+  .docs-content /deep/ h5 {
+    color: #40a9ff;
+  }
+
+  .docs-content /deep/ pre {
+    background: #141821;
+    color: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .code-editor-container {
+    /deep/ .CodeMirror {
+      background: #0f141c;
+      color: #d1d4dc;
     }
 
-    /deep/ h5 {
-      color: #40a9ff;
+    /deep/ .CodeMirror-gutters {
+      border-right-color: rgba(255, 255, 255, 0.08);
+      background: linear-gradient(to right, #151922 0%, #1a1e28 100%);
     }
 
-    /deep/ pre {
-      background: #141821;
-      color: rgba(255, 255, 255, 0.7);
-      border: 1px solid rgba(255, 255, 255, 0.06);
+    /deep/ .CodeMirror-linenumber {
+      color: rgba(255, 255, 255, 0.32);
     }
   }
 }

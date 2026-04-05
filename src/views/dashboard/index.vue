@@ -123,7 +123,7 @@
       </div>
 
       <!-- 运行策略 -->
-      <div class="kpi-card kpi-strategies clickable" @click="$router.push('/trading-assistant')">
+      <div class="kpi-card kpi-strategies clickable" @click="goToStrategyManagement">
         <div class="kpi-content">
           <div class="kpi-header">
             <span class="kpi-icon">
@@ -143,6 +143,24 @@
         <div class="card-arrow">
           <a-icon type="right" />
         </div>
+      </div>
+    </div>
+
+    <div v-if="showSetupGuide" class="setup-guide-card">
+      <div class="setup-guide-copy">
+        <div class="setup-guide-title">{{ $t('dashboard.setupGuide.title') }}</div>
+        <div class="setup-guide-desc">{{ $t('dashboard.setupGuide.desc') }}</div>
+        <div class="setup-guide-path">{{ $t('dashboard.setupGuide.path') }}</div>
+      </div>
+      <div class="setup-guide-actions">
+        <a-button @click="goToStrategyManagement">
+          <a-icon type="appstore" />
+          {{ $t('dashboard.setupGuide.secondary') }}
+        </a-button>
+        <a-button type="primary" @click="goToStrategyCreate">
+          <a-icon type="plus" />
+          {{ $t('dashboard.setupGuide.primary') }}
+        </a-button>
       </div>
     </div>
 
@@ -552,6 +570,12 @@ export default {
     strategyStats () {
       return this.summary.strategy_stats || []
     },
+    showSetupGuide () {
+      const runningStrategies = Number(this.summary.indicator_strategy_count || 0)
+      const hasPositions = Array.isArray(this.summary.current_positions) && this.summary.current_positions.length > 0
+      const hasTrades = Array.isArray(this.summary.recent_trades) && this.summary.recent_trades.length > 0
+      return runningStrategies === 0 || (!hasPositions && !hasTrades)
+    },
     maxStrategyPnl () {
       const stats = this.strategyStats
       if (!stats.length) return 1
@@ -738,6 +762,12 @@ export default {
     if (this.hourlyChart) this.hourlyChart.dispose()
   },
   methods: {
+    goToStrategyManagement () {
+      this.$router.push('/trading-assistant?tab=strategy')
+    },
+    goToStrategyCreate () {
+      this.$router.push('/trading-assistant?tab=strategy&mode=create')
+    },
     async fetchData () {
       try {
         const res = await getDashboardSummary()
@@ -1468,6 +1498,23 @@ export default {
       }
     }
 
+    .setup-guide-card {
+      background: linear-gradient(135deg, rgba(23, 125, 220, 0.14) 0%, rgba(139, 92, 246, 0.12) 100%);
+      border-color: rgba(23, 125, 220, 0.26);
+
+      .setup-guide-title {
+        color: @text-primary-dark;
+      }
+
+      .setup-guide-desc {
+        color: rgba(255, 255, 255, 0.72);
+      }
+
+      .setup-guide-path {
+        color: rgba(255, 255, 255, 0.48);
+      }
+    }
+
     .ranking-card {
       background: rgba(255, 255, 255, 0.03);
       border-color: @border-dark;
@@ -1561,6 +1608,46 @@ export default {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 16px;
     margin-bottom: 20px;
+  }
+
+  .setup-guide-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+    padding: 18px 20px;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
+    border: 1px solid rgba(59, 130, 246, 0.16);
+    border-radius: 16px;
+
+    .setup-guide-copy {
+      min-width: 0;
+    }
+
+    .setup-guide-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: @text-primary-light;
+    }
+
+    .setup-guide-desc {
+      margin-top: 4px;
+      color: @text-secondary-light;
+      line-height: 1.7;
+    }
+
+    .setup-guide-path {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .setup-guide-actions {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
   }
 
   .kpi-card {
@@ -2349,6 +2436,20 @@ export default {
   // Responsive
   @media (max-width: 768px) {
     padding: 12px;
+
+    .setup-guide-card {
+      flex-direction: column;
+      align-items: stretch;
+      padding: 16px;
+
+      .setup-guide-actions {
+        width: 100%;
+
+        .ant-btn {
+          flex: 1;
+        }
+      }
+    }
 
     .kpi-grid {
       grid-template-columns: repeat(2, 1fr);

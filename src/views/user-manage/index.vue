@@ -194,6 +194,11 @@
               <a-select-option value="running">{{ $t('systemOverview.filterRunning') || 'Running' }}</a-select-option>
               <a-select-option value="stopped">{{ $t('systemOverview.filterStopped') || 'Stopped' }}</a-select-option>
             </a-select>
+            <a-select v-model="strategyExecutionFilter" class="toolbar-select" @change="handleStrategyExecutionFilterChange">
+              <a-select-option value="all">{{ $t('systemOverview.filterExecAll') || 'All modes' }}</a-select-option>
+              <a-select-option value="live">{{ $t('systemOverview.live') || 'Live' }}</a-select-option>
+              <a-select-option value="signal">{{ $t('systemOverview.signal') || 'Signal' }}</a-select-option>
+            </a-select>
           </div>
           <div class="toolbar-right">
             <a-input-search
@@ -215,7 +220,7 @@
             :loading="strategyLoading"
             :pagination="strategyPagination"
             :rowKey="record => record.id"
-            :scroll="{ x: 1600 }"
+            :scroll="{ x: 1920 }"
             @change="handleStrategyTableChange"
           >
             <!-- Strategy Status -->
@@ -254,6 +259,19 @@
             <!-- Capital Column -->
             <template slot="capitalInfo" slot-scope="text">
               <span>{{ formatNumber(text) }}</span>
+            </template>
+
+            <!-- Execution mode -->
+            <template slot="executionModeInfo" slot-scope="text">
+              <a-tag v-if="text === 'live'" color="green" size="small">{{ $t('systemOverview.live') || 'Live' }}</a-tag>
+              <a-tag v-else-if="text === 'signal'" color="blue" size="small">{{ $t('systemOverview.signal') || 'Signal' }}</a-tag>
+              <a-tag v-else size="small">{{ text || '—' }}</a-tag>
+            </template>
+
+            <!-- Position equity (live book value; from open positions) -->
+            <template slot="equityInfo" slot-scope="text, record">
+              <span v-if="record.execution_mode === 'live'">{{ formatNumber(text || 0) }}</span>
+              <span v-else class="text-muted">—</span>
             </template>
 
             <!-- PnL Column -->
@@ -306,6 +324,12 @@
 
             <!-- Created At Column -->
             <template slot="createdAtInfo" slot-scope="text">
+              <span v-if="text">{{ formatTime(text) }}</span>
+              <span v-else class="text-muted">-</span>
+            </template>
+
+            <!-- Updated At Column -->
+            <template slot="updatedAtInfo" slot-scope="text">
               <span v-if="text">{{ formatTime(text) }}</span>
               <span v-else class="text-muted">-</span>
             </template>
@@ -859,6 +883,9 @@ export default {
       systemStrategies: [],
       strategySummary: null,
       strategyStatusFilter: 'all',
+      strategyExecutionFilter: 'all',
+      strategySortBy: '',
+      strategySortOrder: 'desc',
       strategySearchKeyword: '',
       strategyPagination: {
         current: 1,
@@ -961,79 +988,129 @@ export default {
       ]
     },
     strategyColumns () {
+      const so = (key) =>
+        this.strategySortBy === key ? (this.strategySortOrder === 'asc' ? 'ascend' : 'descend') : false
       return [
         {
           title: 'ID',
           dataIndex: 'id',
-          width: 60,
-          fixed: 'left'
+          key: 'id',
+          width: 72,
+          fixed: 'left',
+          sorter: true,
+          sortOrder: so('id')
         },
         {
           title: this.$t('systemOverview.colUser') || 'User',
           dataIndex: 'username',
-          width: 110,
+          key: 'username',
+          width: 118,
           fixed: 'left',
           scopedSlots: { customRender: 'userInfo' }
         },
         {
           title: this.$t('systemOverview.colStrategy') || 'Strategy',
           dataIndex: 'strategy_name',
+          key: 'strategy_name',
           width: 160,
-          ellipsis: true
+          ellipsis: true,
+          sorter: true,
+          sortOrder: so('strategy_name')
         },
         {
           title: this.$t('systemOverview.colStatus') || 'Status',
           dataIndex: 'status',
-          width: 100,
-          scopedSlots: { customRender: 'strategyStatus' }
+          key: 'status',
+          width: 108,
+          scopedSlots: { customRender: 'strategyStatus' },
+          sorter: true,
+          sortOrder: so('status')
+        },
+        {
+          title: this.$t('systemOverview.colExecutionMode') || 'Mode',
+          dataIndex: 'execution_mode',
+          key: 'execution_mode',
+          width: 96,
+          align: 'center',
+          scopedSlots: { customRender: 'executionModeInfo' },
+          sorter: true,
+          sortOrder: so('execution_mode')
         },
         {
           title: this.$t('systemOverview.colSymbol') || 'Symbol',
           dataIndex: 'symbol',
+          key: 'symbol',
           width: 140,
-          scopedSlots: { customRender: 'symbolInfo' }
+          scopedSlots: { customRender: 'symbolInfo' },
+          sorter: true,
+          sortOrder: so('symbol')
         },
         {
           title: this.$t('systemOverview.colCapital') || 'Capital',
           dataIndex: 'initial_capital',
+          key: 'initial_capital',
           width: 110,
-          scopedSlots: { customRender: 'capitalInfo' }
+          scopedSlots: { customRender: 'capitalInfo' },
+          sorter: true,
+          sortOrder: so('initial_capital')
+        },
+        {
+          title: this.$t('systemOverview.colPositionEquity') || 'Pos. equity',
+          dataIndex: 'total_equity',
+          key: 'total_equity',
+          width: 120,
+          align: 'right',
+          scopedSlots: { customRender: 'equityInfo' },
+          sorter: true,
+          sortOrder: so('total_equity')
         },
         {
           title: this.$t('systemOverview.colPnl') || 'PnL / ROI',
           dataIndex: 'total_pnl',
+          key: 'total_pnl',
           width: 200,
-          scopedSlots: { customRender: 'pnlInfo' }
+          scopedSlots: { customRender: 'pnlInfo' },
+          sorter: true,
+          sortOrder: so('total_pnl')
         },
         {
           title: this.$t('systemOverview.colPositions') || 'Pos',
           dataIndex: 'position_count',
-          width: 70,
+          key: 'position_count',
+          width: 76,
           align: 'center',
-          scopedSlots: { customRender: 'positionInfo' }
+          scopedSlots: { customRender: 'positionInfo' },
+          sorter: true,
+          sortOrder: so('position_count')
         },
         {
           title: this.$t('systemOverview.colTrades') || 'Trades',
           dataIndex: 'trade_count',
-          width: 80,
+          key: 'trade_count',
+          width: 88,
           align: 'center',
-          scopedSlots: { customRender: 'tradeInfo' }
+          scopedSlots: { customRender: 'tradeInfo' },
+          sorter: true,
+          sortOrder: so('trade_count')
         },
         {
           title: this.$t('systemOverview.colIndicator') || 'Indicator',
           dataIndex: 'indicator_name',
+          key: 'indicator_name',
           width: 130,
           scopedSlots: { customRender: 'indicatorInfo' }
         },
         {
           title: this.$t('systemOverview.colExchange') || 'Exchange',
           dataIndex: 'exchange_name',
+          key: 'exchange_name',
           width: 100,
           scopedSlots: { customRender: 'exchangeInfo' }
         },
         {
           title: this.$t('systemOverview.colTimeframe') || 'TF',
           dataIndex: 'timeframe',
+          key: 'timeframe',
           width: 70,
           align: 'center',
           scopedSlots: { customRender: 'timeframeInfo' }
@@ -1041,15 +1118,30 @@ export default {
         {
           title: this.$t('systemOverview.colLeverage') || 'Lev',
           dataIndex: 'leverage',
+          key: 'leverage',
           width: 70,
           align: 'center',
-          scopedSlots: { customRender: 'leverageInfo' }
+          scopedSlots: { customRender: 'leverageInfo' },
+          sorter: true,
+          sortOrder: so('leverage')
         },
         {
           title: this.$t('systemOverview.colCreatedAt') || 'Created',
           dataIndex: 'created_at',
+          key: 'created_at',
           width: 150,
-          scopedSlots: { customRender: 'createdAtInfo' }
+          scopedSlots: { customRender: 'createdAtInfo' },
+          sorter: true,
+          sortOrder: so('created_at')
+        },
+        {
+          title: this.$t('systemOverview.colUpdatedAt') || 'Updated',
+          dataIndex: 'updated_at',
+          key: 'updated_at',
+          width: 150,
+          scopedSlots: { customRender: 'updatedAtInfo' },
+          sorter: true,
+          sortOrder: so('updated_at')
         }
       ]
     },
@@ -1231,12 +1323,18 @@ export default {
     async loadSystemStrategies () {
       this.strategyLoading = true
       try {
-        const res = await getSystemStrategies({
+        const params = {
           page: this.strategyPagination.current,
           page_size: this.strategyPagination.pageSize,
           status: this.strategyStatusFilter === 'all' ? '' : this.strategyStatusFilter,
+          execution_mode: this.strategyExecutionFilter === 'all' ? '' : this.strategyExecutionFilter,
           search: this.strategySearchKeyword || ''
-        })
+        }
+        if (this.strategySortBy) {
+          params.sort_by = this.strategySortBy
+          params.sort_order = this.strategySortOrder
+        }
+        const res = await getSystemStrategies(params)
         if (res.code === 1) {
           this.systemStrategies = res.data.items || []
           this.strategyPagination.total = res.data.total || 0
@@ -1263,9 +1361,26 @@ export default {
       this.loadSystemStrategies()
     },
 
-    handleStrategyTableChange (pagination) {
-      this.strategyPagination.current = pagination.current
-      this.strategyPagination.pageSize = pagination.pageSize
+    handleStrategyExecutionFilterChange () {
+      this.strategyPagination.current = 1
+      this.loadSystemStrategies()
+    },
+
+    handleStrategyTableChange (pagination, filters, sorter) {
+      if (pagination) {
+        this.strategyPagination.current = pagination.current
+        this.strategyPagination.pageSize = pagination.pageSize
+      }
+      if (sorter && Object.keys(sorter).length) {
+        if (sorter.order === 'ascend' || sorter.order === 'descend') {
+          const key = sorter.columnKey != null ? String(sorter.columnKey) : String(sorter.field || '')
+          this.strategySortBy = key
+          this.strategySortOrder = sorter.order === 'ascend' ? 'asc' : 'desc'
+        } else {
+          this.strategySortBy = ''
+          this.strategySortOrder = 'desc'
+        }
+      }
       this.loadSystemStrategies()
     },
 
@@ -2047,6 +2162,21 @@ export default {
         }
 
         .ant-table-tbody > tr:hover > td {
+          background: #252525;
+        }
+
+        .ant-table-fixed-left .ant-table-thead > tr > th,
+        .ant-table-fixed-right .ant-table-thead > tr > th {
+          background: #252525 !important;
+        }
+
+        .ant-table-fixed-left .ant-table-tbody > tr > td,
+        .ant-table-fixed-right .ant-table-tbody > tr > td {
+          background: #1c1c1c;
+        }
+
+        .ant-table-fixed-left .ant-table-tbody > tr:hover > td,
+        .ant-table-fixed-right .ant-table-tbody > tr:hover > td {
           background: #252525;
         }
       }

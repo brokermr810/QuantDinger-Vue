@@ -16,6 +16,9 @@
           <a-icon type="line-chart" />
         </div>
         <div class="card-body">
+          <div class="card-badge-row">
+            <span class="card-badge">{{ $t('trading-assistant.strategyMode.signalBadge') }}</span>
+          </div>
           <h4>{{ $t('trading-assistant.strategyMode.signal') }}</h4>
           <p class="card-desc">{{ $t('trading-assistant.strategyMode.signalDesc') }}</p>
           <ul class="card-features">
@@ -39,6 +42,9 @@
           <a-icon type="code" />
         </div>
         <div class="card-body">
+          <div class="card-badge-row">
+            <span class="card-badge card-badge--script">{{ $t('trading-assistant.strategyMode.scriptBadge') }}</span>
+          </div>
           <h4>{{ $t('trading-assistant.strategyMode.script') }}</h4>
           <p class="card-desc">{{ $t('trading-assistant.strategyMode.scriptDesc') }}</p>
           <ul class="card-features">
@@ -74,6 +80,8 @@
 </template>
 
 <script>
+import { SCRIPT_TEMPLATE_CATALOG } from './scriptTemplateCatalog'
+
 export default {
   name: 'StrategyTypeSelector',
   props: {
@@ -82,14 +90,7 @@ export default {
   },
   data () {
     return {
-      templates: [
-        { key: 'trendFollowing', icon: '📈' },
-        { key: 'martingale', icon: '🔥' },
-        { key: 'grid', icon: '📐' },
-        { key: 'dca', icon: '💰' },
-        { key: 'meanReversion', icon: '🔄' },
-        { key: 'breakout', icon: '⚡' }
-      ]
+      templates: SCRIPT_TEMPLATE_CATALOG.map(item => ({ key: item.key, icon: item.icon }))
     }
   }
 }
@@ -185,6 +186,27 @@ export default {
 
 .card-body {
   flex: 1;
+
+  .card-badge-row {
+    margin-bottom: 10px;
+  }
+
+  .card-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(24, 144, 255, 0.08);
+    color: #1890ff;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.4;
+
+    &.card-badge--script {
+      background: rgba(82, 196, 26, 0.12);
+      color: #389e0d;
+    }
+  }
 
   h4 {
     font-size: 16px;
@@ -297,6 +319,15 @@ export default {
   .card-body {
     h4 { color: #e0e6ed; }
     .card-desc { color: rgba(255, 255, 255, 0.45); }
+    .card-badge {
+      background: rgba(64, 169, 255, 0.12);
+      color: #69c0ff;
+
+      &.card-badge--script {
+        background: rgba(115, 209, 61, 0.16);
+        color: #95de64;
+      }
+    }
   }
 
   .card-features li {
