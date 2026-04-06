@@ -6,6 +6,7 @@
     @cancel="handleCancel"
     :maskClosable="false"
     class="backtest-modal"
+    :wrapClassName="backtestModalWrapClass"
   >
     <div class="backtest-content">
       <a-steps :current="currentStep" size="small" style="margin-bottom: 16px;">
@@ -421,7 +422,7 @@
               <a-col :span="12">
                 <a-form-item :label="$t('dashboard.indicator.backtest.field.slippage')">
                   <a-input-number
-                    v-decorator="['slippage', { initialValue: 0 }]"
+                    v-decorator="['slippage', { initialValue: 0.02 }]"
                     :min="0"
                     :max="10"
                     :step="0.01"
@@ -442,6 +443,23 @@
                     :formatter="value => `${value}x`"
                     :parser="value => value.replace('x', '')"
                   />
+                </a-form-item>
+              </a-col>
+            </a-row>
+            <a-row :gutter="24">
+              <a-col :span="24">
+                <a-form-item
+                  :label="$t('dashboard.indicator.backtest.field.signalTiming')"
+                  :help="$t('dashboard.indicator.backtest.signalTiming.help')"
+                >
+                  <a-radio-group v-decorator="['signalTiming', { initialValue: 'next_bar_open' }]">
+                    <a-radio-button value="next_bar_open">
+                      {{ $t('dashboard.indicator.backtest.signalTiming.nextBarOpen') }}
+                    </a-radio-button>
+                    <a-radio-button value="same_bar_close">
+                      {{ $t('dashboard.indicator.backtest.signalTiming.sameBarClose') }}
+                    </a-radio-button>
+                  </a-radio-group>
                 </a-form-item>
               </a-col>
             </a-row>
@@ -495,6 +513,9 @@
           show-icon
           style="margin-bottom: 12px;"
           :message="$t('dashboard.indicator.backtest.savedRunId', { id: backtestRunId })"
+        />
+        <backtest-execution-assumptions-alert
+          :assumptions="result.executionAssumptions"
         />
 
         <!-- 关键指标卡片 -->
@@ -624,10 +645,13 @@
 <script>
 import moment from 'moment'
 import * as echarts from 'echarts'
+import { mapState } from 'vuex'
 import request from '@/utils/request'
+import BacktestExecutionAssumptionsAlert from './BacktestExecutionAssumptionsAlert.vue'
 
 export default {
   name: 'BacktestModal',
+  components: { BacktestExecutionAssumptionsAlert },
   props: {
     visible: {
       type: Boolean,
@@ -688,6 +712,15 @@ export default {
     }
   },
   computed: {
+    ...mapState({
+      navTheme: state => state.app.theme
+    }),
+    isDarkTheme () {
+      return this.navTheme === 'dark' || this.navTheme === 'realdark'
+    },
+    backtestModalWrapClass () {
+      return this.isDarkTheme ? 'backtest-modal-wrap backtest-modal-wrap--dark' : 'backtest-modal-wrap'
+    },
     // 根据周期计算最大回测时间范围
     maxBacktestRange () {
       // 1分钟线：最多1个月
@@ -1206,6 +1239,9 @@ export default {
             position: {
               entryPct: pct(allValues.entryPct || 0)
             },
+            execution: {
+              signalTiming: allValues.signalTiming === 'same_bar_close' ? 'same_bar_close' : 'next_bar_open'
+            },
             scale: {
               trendAdd: {
                 enabled: !!allValues.trendAddEnabled,
@@ -1657,6 +1693,137 @@ export default {
   @keyframes fadeInOut {
     0%, 100% { opacity: 0.5; }
     50% { opacity: 1; }
+  }
+}
+</style>
+
+<style lang="less">
+/* Modal 挂载在 body，需非 scoped */
+.backtest-modal-wrap--dark {
+  .ant-modal-content,
+  .ant-modal-header,
+  .ant-modal-body,
+  .ant-modal-footer {
+    background: #1f1f1f;
+  }
+
+  .ant-modal-header {
+    border-bottom-color: #303030;
+  }
+
+  .ant-modal-title {
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .ant-modal-close {
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  .ant-modal-body {
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .ant-modal-footer {
+    border-top-color: #303030;
+  }
+
+  .ant-steps-item-title,
+  .ant-steps-item-description {
+    color: rgba(255, 255, 255, 0.65);
+  }
+
+  .ant-steps-item-process .ant-steps-item-title {
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .ant-collapse {
+    background: #141414 !important;
+    border-color: #303030;
+  }
+
+  .ant-collapse-item {
+    border-bottom-color: #303030;
+  }
+
+  .ant-collapse-header {
+    color: rgba(255, 255, 255, 0.85) !important;
+  }
+
+  .ant-form-item-label > label {
+    color: rgba(255, 255, 255, 0.65);
+  }
+
+  .ant-input,
+  .ant-input-number,
+  .ant-select-selection {
+    background: #141414 !important;
+    border-color: #434343 !important;
+    color: rgba(255, 255, 255, 0.88) !important;
+  }
+
+  .ant-table {
+    background: transparent;
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .ant-table-thead > tr > th {
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.65);
+    border-bottom-color: #303030;
+  }
+
+  .ant-table-tbody > tr > td {
+    background: transparent;
+    border-bottom-color: #303030;
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .ant-table-tbody > tr:hover > td {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .ant-pagination-total-text {
+    color: rgba(255, 255, 255, 0.65);
+  }
+
+  .ant-pagination-item {
+    background: #1f1f1f;
+    border-color: #434343;
+  }
+
+  .ant-pagination-item a,
+  .ant-pagination-prev .ant-pagination-item-link,
+  .ant-pagination-next .ant-pagination-item-link {
+    color: rgba(255, 255, 255, 0.65);
+    background: #1f1f1f;
+    border-color: #434343;
+  }
+
+  .ant-pagination-item-active {
+    border-color: #177ddc;
+
+    a {
+      color: #69c0ff;
+    }
+  }
+
+  .section-title,
+  .chart-title {
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .metric-card {
+    background: #141414;
+    border-color: #303030;
+
+    .metric-label {
+      color: rgba(255, 255, 255, 0.45);
+    }
+
+    .metric-value,
+    .metric-amount {
+      color: rgba(255, 255, 255, 0.88);
+    }
   }
 }
 </style>

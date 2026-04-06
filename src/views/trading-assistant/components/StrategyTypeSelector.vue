@@ -287,7 +287,7 @@ export default {
 
   .mode-card {
     border-color: rgba(255, 255, 255, 0.08);
-    background: #1a1e28;
+    background: #1c1c1c;
 
     &:hover {
       border-color: #177ddc;

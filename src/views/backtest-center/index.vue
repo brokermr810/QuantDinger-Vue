@@ -178,6 +178,16 @@
                     />
                   </a-col>
                 </a-row>
+                <div class="section" style="margin-top: 8px;">
+                  <div class="field-label">{{ $t('backtest-center.config.signalTiming') }}</div>
+                  <div class="field-hint" style="margin-bottom: 6px; font-size: 12px; color: #888;">
+                    {{ $t('backtest-center.config.signalTimingHelp') }}
+                  </div>
+                  <a-radio-group v-model="signalTiming" size="small" button-style="solid">
+                    <a-radio-button value="next_bar_open">{{ $t('backtest-center.config.signalTimingNext') }}</a-radio-button>
+                    <a-radio-button value="same_bar_close">{{ $t('backtest-center.config.signalTimingSame') }}</a-radio-button>
+                  </a-radio-group>
+                </div>
               </div>
 
               <!-- 交易方向 -->
@@ -615,6 +625,7 @@ import { getWatchlist, addWatchlist, searchSymbols } from '@/api/market'
 import { getStrategyList, runStrategyBacktest as runStrategyBacktestApi } from '@/api/strategy'
 import BacktestHistoryDrawer from '@/views/indicator-analysis/components/BacktestHistoryDrawer.vue'
 import BacktestRunViewer from '@/views/indicator-analysis/components/BacktestRunViewer.vue'
+import BacktestExecutionAssumptionsAlert from '@/views/indicator-analysis/components/BacktestExecutionAssumptionsAlert.vue'
 
 const TF_MAX_DAYS = {
   '1m': 30,
@@ -638,6 +649,7 @@ const DATE_PRESETS = [
 
 const ResultView = {
   name: 'ResultView',
+  components: { BacktestExecutionAssumptionsAlert },
   props: {
     running: Boolean,
     runTip: String,
@@ -1054,6 +1066,14 @@ const ResultView = {
       { label: 'commission', value: this.fmtMoney(-(r.totalCommission || 0)), cls: '' }
     ]
 
+    const execAlert = h(BacktestExecutionAssumptionsAlert, {
+      props: {
+        assumptions: r.executionAssumptions || null,
+        strategyConfig: null,
+        timeframe: this.timeframe || ''
+      }
+    })
+
     return h('div', { class: 'result-content' }, [
       h('div', { class: 'result-header' }, [
         h('div', { class: 'result-header-left' }, [
@@ -1083,6 +1103,7 @@ const ResultView = {
           ])
         ])
       ]),
+      execAlert,
 
       h('div', { class: 'metrics-cards' }, metricCards.map(m =>
         h('div', { class: ['metric-card', m.cls] }, [
@@ -1251,7 +1272,8 @@ export default {
       initialCapital: 10000,
       leverage: 1,
       commission: 0.02,
-      slippage: 0,
+      slippage: 0.02,
+      signalTiming: 'next_bar_open',
       tradeDirection: 'long',
       stopLossPct: 0,
       takeProfitPct: 0,
@@ -1617,6 +1639,9 @@ export default {
             strategyConfig: {
               risk: { stopLossPct: pct(this.stopLossPct), takeProfitPct: pct(this.takeProfitPct), trailing: { enabled: this.trailingEnabled, pct: pct(this.trailingStopPct), activationPct: pct(this.trailingActivationPct) } },
               position: { entryPct: pct(this.entryPct) },
+              execution: {
+                signalTiming: this.signalTiming === 'same_bar_close' ? 'same_bar_close' : 'next_bar_open'
+              },
               scale: { trendAdd: { enabled: false }, dcaAdd: { enabled: false }, trendReduce: { enabled: false }, adverseReduce: { enabled: false } }
             },
             enableMtf: this.market && this.market.toLowerCase() === 'crypto'
@@ -2161,6 +2186,9 @@ export default {
     .ant-table-placeholder { background: transparent; color: rgba(255,255,255,0.35); }
   }
   /deep/ .ant-pagination {
+    .ant-pagination-total-text {
+      color: rgba(255, 255, 255, 0.65);
+    }
     .ant-pagination-item { background: #1f1f1f; border-color: #434343; a { color: rgba(255,255,255,0.65); } &.ant-pagination-item-active { border-color: #177ddc; a { color: #177ddc; } } }
     .ant-pagination-prev, .ant-pagination-next { .ant-pagination-item-link { background: #1f1f1f; border-color: #434343; color: rgba(255,255,255,0.45); } }
   }

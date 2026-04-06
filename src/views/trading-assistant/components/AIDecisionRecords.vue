@@ -367,7 +367,7 @@ export default {
 .trading-assistant.theme-dark {
   .ai-decision-records {
     /deep/ .ant-table {
-      background: var(--table-row-bg, #1e222d);
+      background: var(--table-row-bg, #1c1c1c);
       color: var(--text-color, #d1d4dc);
 
       .ant-table-thead > tr > th {
@@ -381,7 +381,7 @@ export default {
       }
 
       .ant-table-tbody > tr > td {
-        background: var(--table-row-bg, #1e222d);
+        background: var(--table-row-bg, #1c1c1c);
         color: var(--text-color, #d1d4dc);
         border-bottom-color: var(--table-border-color, #2a2e39);
       }
@@ -392,7 +392,7 @@ export default {
 
       .ant-table-body {
         &::-webkit-scrollbar-track {
-          background: var(--table-row-bg, #1e222d);
+          background: var(--table-row-bg, #1c1c1c);
         }
 
         &::-webkit-scrollbar-thumb {
@@ -487,7 +487,7 @@ export default {
       }
 
       .ant-pagination-item {
-        background: var(--table-row-bg, #1e222d);
+        background: var(--table-row-bg, #1c1c1c);
         border-color: var(--table-border-color, #2a2e39);
 
         a {
@@ -515,7 +515,7 @@ export default {
       .ant-pagination-prev,
       .ant-pagination-next {
         .ant-pagination-item-link {
-          background: var(--table-row-bg, #1e222d);
+          background: var(--table-row-bg, #1c1c1c);
           border-color: var(--table-border-color, #2a2e39);
           color: var(--text-color, #d1d4dc);
 
@@ -528,7 +528,7 @@ export default {
 
       .ant-pagination-options {
         .ant-select-selector {
-          background: var(--table-row-bg, #1e222d);
+          background: var(--table-row-bg, #1c1c1c);
           border-color: var(--table-border-color, #2a2e39);
           color: var(--text-color, #d1d4dc);
         }

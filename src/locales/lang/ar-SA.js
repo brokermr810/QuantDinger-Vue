@@ -1193,6 +1193,8 @@ const locale = {
   'trading-assistant.indicatorType.volatility': 'التقلب',
   'trading-assistant.indicatorType.volume': 'الحجم',
   'trading-assistant.indicatorType.custom': 'تخصيص',
+  'trading-assistant.indicatorType.python': 'Python',
+  'trading-assistant.indicatorType.pine': 'Pine Script',
   'trading-assistant.exchangeNames': {
     'okx': 'أوكي إكس',
     'binance': 'بينانس',

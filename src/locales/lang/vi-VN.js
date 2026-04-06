@@ -2314,6 +2314,10 @@ const locale = {
 
 'trading-assistant.indicatorType.custom': 'Tùy chỉnh',
 
+'trading-assistant.indicatorType.python': 'Python',
+
+'trading-assistant.indicatorType.pine': 'Pine Script',
+
 'trading-assistant.exchangeNames': {
 
 'okx': 'OKX',

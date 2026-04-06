@@ -1,6 +1,6 @@
 <template>
-  <div class="position-records">
-    <div v-if="positions.length === 0 && !loading" class="empty-state">
+  <div class="position-records strategy-tab-pane-inner" :class="{ 'theme-dark': isDark }">
+    <div v-if="positions.length === 0 && !loading" class="empty-state strategy-tab-empty">
       <a-empty :description="$t('trading-assistant.table.noPositions')" />
     </div>
     <a-table
@@ -66,6 +66,10 @@ export default {
       default: 1
     },
     loading: {
+      type: Boolean,
+      default: false
+    },
+    isDark: {
       type: Boolean,
       default: false
     }
@@ -233,11 +237,16 @@ export default {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 200px;
-    padding: 40px 0;
-    background: linear-gradient(135deg, rgba(248, 250, 252, 0.5) 0%, rgba(241, 245, 249, 0.5) 100%);
-    border-radius: 12px;
-    border: 2px dashed #e0e6ed;
+    min-height: 220px;
+    padding: 40px 16px;
+    border-radius: 8px;
+    background: #fafafa;
+    border: 1px solid #f0f0f0;
+  }
+
+  &.theme-dark .empty-state {
+    background: #141414;
+    border-color: rgba(255, 255, 255, 0.08);
   }
 
   ::v-deep .ant-table {
@@ -326,7 +335,7 @@ export default {
     transition: background 0.2s ease;
 
     strong {
-      color: #1e293b;
+      color: #262626;
       font-weight: 600;
     }
   }
@@ -362,7 +371,7 @@ export default {
   &.theme-dark,
   .theme-dark & {
     ::v-deep .ant-table {
-      background: #1e222d !important;
+      background: #1c1c1c !important;
       color: #d1d4dc !important;
     }
 
@@ -374,7 +383,7 @@ export default {
     }
 
     ::v-deep .ant-table-tbody > tr > td {
-      background: #1e222d !important;
+      background: #1c1c1c !important;
       color: #d1d4dc !important;
       border-bottom-color: #363c4e !important;
     }
@@ -398,6 +407,10 @@ export default {
     .ant-empty-description {
       color: #8c8c8c;
     }
+  }
+
+  &.theme-dark ::v-deep .ant-empty .ant-empty-description {
+    color: rgba(255, 255, 255, 0.35);
   }
 
   .profit {
@@ -538,7 +551,7 @@ export default {
 body.dark .position-records .ant-table-tbody > tr > td,
 body.realdark .position-records .ant-table-tbody > tr > td {
   color: #d1d4dc !important;
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   border-bottom-color: #363c4e !important;
 }
 
@@ -556,7 +569,7 @@ body.realdark .position-records .ant-table-thead > tr > th {
 .theme-dark .position-records[data-v] .ant-table,
 body.dark .position-records .ant-table,
 body.realdark .position-records .ant-table {
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   color: #d1d4dc !important;
 }
 
@@ -588,7 +601,7 @@ body.realdark .position-records .ant-table-thead > tr > th {
 .theme-dark .position-records[data-v] .ant-table-tbody > tr > td,
 .theme-dark [class*="position-records"][data-v] .ant-table-tbody > tr > td {
   color: #d1d4dc !important;
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   border-bottom-color: #363c4e !important;
 }
 
@@ -610,14 +623,14 @@ body.realdark .position-records .ant-table-thead > tr > th {
 .theme-dark [data-v-6c1eb557].position-records .ant-table-tbody > tr > td,
 .theme-dark [data-v-6c1eb557] .position-records .ant-table-tbody > tr > td {
   color: #d1d4dc !important;
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   border-bottom-color: #363c4e !important;
 }
 
 // 方法2：使用属性选择器前缀匹配（更通用）
 .theme-dark [data-v-6c1eb557] .ant-table-tbody > tr > td {
   color: #d1d4dc !important;
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   border-bottom-color: #363c4e !important;
 }
 
@@ -630,7 +643,7 @@ body.realdark .position-records .ant-table-thead > tr > th {
 
 .theme-dark .position-records[data-v-6c1eb557] .ant-table,
 .theme-dark [data-v-6c1eb557].position-records .ant-table {
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   color: #d1d4dc !important;
 }
 
@@ -647,7 +660,7 @@ body.realdark .position-records[data-v-6c1eb557] .ant-table-tbody > tr > td,
 body.realdark [data-v-6c1eb557].position-records .ant-table-tbody > tr > td,
 body.realdark [data-v-6c1eb557] .position-records .ant-table-tbody > tr > td {
   color: #d1d4dc !important;
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   border-bottom-color: #363c4e !important;
 }
 
@@ -655,7 +668,7 @@ body.realdark [data-v-6c1eb557] .position-records .ant-table-tbody > tr > td {
 body.dark [data-v-6c1eb557] .ant-table-tbody > tr > td,
 body.realdark [data-v-6c1eb557] .ant-table-tbody > tr > td {
   color: #d1d4dc !important;
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   border-bottom-color: #363c4e !important;
 }
 
@@ -683,7 +696,7 @@ body.realdark [data-v-6c1eb557] .ant-table-thead > tr > th {
 body.dark .position-records[data-v] .ant-table-tbody > tr > td,
 body.realdark .position-records[data-v] .ant-table-tbody > tr > td {
   color: #d1d4dc !important;
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   border-bottom-color: #363c4e !important;
 }
 
@@ -725,7 +738,7 @@ body.dark .trading-assistant [data-v-6c1eb557].position-records .ant-table-tbody
 body.realdark .trading-assistant .position-records[data-v-6c1eb557] .ant-table-tbody > tr > td,
 body.realdark .trading-assistant [data-v-6c1eb557].position-records .ant-table-tbody > tr > td {
   color: #d1d4dc !important;
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   border-bottom-color: #363c4e !important;
 }
 

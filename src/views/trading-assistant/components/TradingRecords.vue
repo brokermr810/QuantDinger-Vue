@@ -1,6 +1,6 @@
 <template>
-  <div class="trading-records">
-    <div v-if="records.length === 0 && !loading" class="empty-state">
+  <div class="trading-records strategy-tab-pane-inner" :class="{ 'theme-dark': isDark }">
+    <div v-if="records.length === 0 && !loading" class="empty-state strategy-tab-empty">
       <a-empty :description="$t('trading-assistant.table.noPositions')" />
     </div>
     <a-table
@@ -53,6 +53,10 @@ export default {
       required: true
     },
     loading: {
+      type: Boolean,
+      default: false
+    },
+    isDark: {
       type: Boolean,
       default: false
     }
@@ -308,11 +312,16 @@ export default {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 200px;
-    padding: 40px 0;
-    background: linear-gradient(135deg, rgba(248, 250, 252, 0.5) 0%, rgba(241, 245, 249, 0.5) 100%);
-    border-radius: 12px;
-    border: 2px dashed #e0e6ed;
+    min-height: 220px;
+    padding: 40px 16px;
+    border-radius: 8px;
+    background: #fafafa;
+    border: 1px solid #f0f0f0;
+  }
+
+  &.theme-dark .empty-state {
+    background: #141414;
+    border-color: rgba(255, 255, 255, 0.08);
   }
 
   ::v-deep .ant-spin-nested-loading {
@@ -524,7 +533,7 @@ export default {
   &.theme-dark,
   .theme-dark & {
     ::v-deep .ant-table {
-      background: #1e222d !important;
+      background: #1c1c1c !important;
       color: #d1d4dc !important;
     }
 
@@ -536,7 +545,7 @@ export default {
     }
 
     ::v-deep .ant-table-tbody > tr > td {
-      background: #1e222d !important;
+      background: #1c1c1c !important;
       color: #d1d4dc !important;
       border-bottom-color: #363c4e !important;
     }
@@ -547,6 +556,10 @@ export default {
 
     ::v-deep .ant-table-tbody > tr > td span {
       color: #d1d4dc !important;
+    }
+
+    ::v-deep .ant-empty .ant-empty-description {
+      color: rgba(255, 255, 255, 0.35);
     }
   }
 
@@ -642,7 +655,7 @@ export default {
 body.dark .trading-records .ant-table-tbody > tr > td,
 body.realdark .trading-records .ant-table-tbody > tr > td {
   color: #d1d4dc !important;
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   border-bottom-color: #363c4e !important;
 }
 
@@ -660,7 +673,7 @@ body.realdark .trading-records .ant-table-thead > tr > th {
 .theme-dark .trading-records[data-v] .ant-table,
 body.dark .trading-records .ant-table,
 body.realdark .trading-records .ant-table {
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   color: #d1d4dc !important;
 }
 
@@ -696,7 +709,7 @@ body.realdark .trading-records .ant-table-thead > tr > th {
 body.dark .trading-records[data-v-8a68b65a] .ant-table-tbody > tr > td,
 body.realdark .trading-records[data-v-8a68b65a] .ant-table-tbody > tr > td {
   color: #d1d4dc !important;
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   border-bottom-color: #363c4e !important;
 }
 
@@ -712,7 +725,7 @@ body.realdark .trading-records[data-v-8a68b65a] .ant-table-thead > tr > th {
 body.dark .trading-records[data-v] .ant-table-tbody > tr > td,
 body.realdark .trading-records[data-v] .ant-table-tbody > tr > td {
   color: #d1d4dc !important;
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   border-bottom-color: #363c4e !important;
 }
 
@@ -728,7 +741,7 @@ body.realdark .trading-records[data-v] .ant-table-thead > tr > th {
 .theme-dark .trading-records[data-v-8a68b65a] .ant-pagination-item,
 body.dark .trading-records[data-v-8a68b65a] .ant-pagination-item,
 body.realdark .trading-records[data-v-8a68b65a] .ant-pagination-item {
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   border-color: #363c4e !important;
 
   a {
@@ -761,7 +774,7 @@ body.dark .trading-records[data-v-8a68b65a] .ant-pagination-prev .ant-pagination
 body.dark .trading-records[data-v-8a68b65a] .ant-pagination-next .ant-pagination-item-link,
 body.realdark .trading-records[data-v-8a68b65a] .ant-pagination-prev .ant-pagination-item-link,
 body.realdark .trading-records[data-v-8a68b65a] .ant-pagination-next .ant-pagination-item-link {
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   border-color: #363c4e !important;
   color: #d1d4dc !important;
 }
@@ -780,7 +793,7 @@ body.realdark .trading-records[data-v-8a68b65a] .ant-pagination-next:hover .ant-
 .theme-dark .trading-records[data-v] .ant-pagination-item,
 body.dark .trading-records[data-v] .ant-pagination-item,
 body.realdark .trading-records[data-v] .ant-pagination-item {
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   border-color: #363c4e !important;
 
   a {
@@ -813,7 +826,7 @@ body.dark .trading-records[data-v] .ant-pagination-prev .ant-pagination-item-lin
 body.dark .trading-records[data-v] .ant-pagination-next .ant-pagination-item-link,
 body.realdark .trading-records[data-v] .ant-pagination-prev .ant-pagination-item-link,
 body.realdark .trading-records[data-v] .ant-pagination-next .ant-pagination-item-link {
-  background: #1e222d !important;
+  background: #1c1c1c !important;
   border-color: #363c4e !important;
   color: #d1d4dc !important;
 }
@@ -897,12 +910,12 @@ body.realdark .trading-records[data-v] .ant-table-wrapper {
 // 暗黑主题适配 - 使用全局样式确保能够覆盖
 .theme-dark .trading-records {
   ::v-deep .ant-table {
-    background: #1e222d !important;
+    background: #1c1c1c !important;
     color: #d1d4dc !important;
   }
 
   ::v-deep .ant-table table {
-    background: #1e222d !important;
+    background: #1c1c1c !important;
     color: #d1d4dc !important;
   }
 
@@ -917,7 +930,7 @@ body.realdark .trading-records[data-v] .ant-table-wrapper {
   }
 
   ::v-deep .ant-table-tbody > tr > td {
-    background: #1e222d !important;
+    background: #1c1c1c !important;
     color: #d1d4dc !important;
     border-bottom-color: #363c4e !important;
   }
@@ -934,7 +947,7 @@ body.realdark .trading-records[data-v] .ant-table-wrapper {
   }
 
   ::v-deep .ant-table-placeholder {
-    background: #1e222d !important;
+    background: #1c1c1c !important;
     color: #868993 !important;
   }
 
@@ -964,7 +977,7 @@ body.realdark .trading-records[data-v] .ant-table-wrapper {
 
   ::v-deep .ant-pagination {
     .ant-pagination-item {
-      background: #1e222d !important;
+      background: #1c1c1c !important;
       border-color: #363c4e !important;
 
       a {
@@ -992,7 +1005,7 @@ body.realdark .trading-records[data-v] .ant-table-wrapper {
     .ant-pagination-prev,
     .ant-pagination-next {
       .ant-pagination-item-link {
-        background: #1e222d !important;
+        background: #1c1c1c !important;
         border-color: #363c4e !important;
         color: #d1d4dc !important;
       }
@@ -1006,7 +1019,7 @@ body.realdark .trading-records[data-v] .ant-table-wrapper {
     .ant-pagination-options {
       .ant-select {
         .ant-select-selector {
-          background: #1e222d !important;
+          background: #1c1c1c !important;
           border-color: #363c4e !important;
           color: #d1d4dc !important;
         }
@@ -1018,12 +1031,12 @@ body.realdark .trading-records[data-v] .ant-table-wrapper {
 body.dark .trading-records,
 body.realdark .trading-records {
   ::v-deep .ant-table {
-    background: #1e222d !important;
+    background: #1c1c1c !important;
     color: #d1d4dc !important;
   }
 
   ::v-deep .ant-table table {
-    background: #1e222d !important;
+    background: #1c1c1c !important;
     color: #d1d4dc !important;
   }
 
@@ -1038,7 +1051,7 @@ body.realdark .trading-records {
   }
 
   ::v-deep .ant-table-tbody > tr > td {
-    background: #1e222d !important;
+    background: #1c1c1c !important;
     color: #d1d4dc !important;
     border-bottom-color: #363c4e !important;
   }
@@ -1055,7 +1068,7 @@ body.realdark .trading-records {
   }
 
   ::v-deep .ant-table-placeholder {
-    background: #1e222d !important;
+    background: #1c1c1c !important;
     color: #868993 !important;
   }
 
@@ -1085,7 +1098,7 @@ body.realdark .trading-records {
 
   ::v-deep .ant-pagination {
     .ant-pagination-item {
-      background: #1e222d !important;
+      background: #1c1c1c !important;
       border-color: #363c4e !important;
 
       a {
@@ -1113,7 +1126,7 @@ body.realdark .trading-records {
     .ant-pagination-prev,
     .ant-pagination-next {
       .ant-pagination-item-link {
-        background: #1e222d !important;
+        background: #1c1c1c !important;
         border-color: #363c4e !important;
         color: #d1d4dc !important;
       }
@@ -1127,7 +1140,7 @@ body.realdark .trading-records {
     .ant-pagination-options {
       .ant-select {
         .ant-select-selector {
-          background: #1e222d !important;
+          background: #1c1c1c !important;
           border-color: #363c4e !important;
           color: #d1d4dc !important;
         }
@@ -1146,12 +1159,12 @@ body.dark .trading-records *,
 body.realdark .trading-records,
 body.realdark .trading-records * {
   ::v-deep .ant-table {
-    background: #1e222d !important;
+    background: #1c1c1c !important;
     color: #d1d4dc !important;
   }
 
   ::v-deep .ant-table table {
-    background: #1e222d !important;
+    background: #1c1c1c !important;
     color: #d1d4dc !important;
   }
 
@@ -1166,7 +1179,7 @@ body.realdark .trading-records * {
   }
 
   ::v-deep .ant-table-tbody > tr > td {
-    background: #1e222d !important;
+    background: #1c1c1c !important;
     color: #d1d4dc !important;
     border-bottom-color: #363c4e !important;
   }
@@ -1183,13 +1196,13 @@ body.realdark .trading-records * {
   }
 
   ::v-deep .ant-table-placeholder {
-    background: #1e222d !important;
+    background: #1c1c1c !important;
     color: #868993 !important;
   }
 
   ::v-deep .ant-pagination {
     .ant-pagination-item {
-      background: #1e222d !important;
+      background: #1c1c1c !important;
       border-color: #363c4e !important;
 
       a {
@@ -1217,7 +1230,7 @@ body.realdark .trading-records * {
     .ant-pagination-prev,
     .ant-pagination-next {
       .ant-pagination-item-link {
-        background: #1e222d !important;
+        background: #1c1c1c !important;
         border-color: #363c4e !important;
         color: #d1d4dc !important;
       }
@@ -1231,7 +1244,7 @@ body.realdark .trading-records * {
     .ant-pagination-options {
       .ant-select {
         .ant-select-selector {
-          background: #1e222d !important;
+          background: #1c1c1c !important;
           border-color: #363c4e !important;
           color: #d1d4dc !important;
         }

@@ -1,6 +1,6 @@
 <template>
   <div class="trading-assistant" :class="{ 'theme-dark': isDarkTheme }">
-    <div class="assistant-guide-bar">
+    <div v-if="showAssistantGuide" class="assistant-guide-bar">
       <div class="assistant-guide-copy">
         <div class="assistant-guide-eyebrow">{{ $t('trading-assistant.guide.eyebrow') }}</div>
         <div class="assistant-guide-title">{{ $t('trading-assistant.guide.title') }}</div>
@@ -38,6 +38,9 @@
           <a-icon type="plus" />
           {{ $t('trading-assistant.guide.primary') }}
         </a-button>
+        <a-button class="assistant-guide-close" @click="dismissAssistantGuide">
+          <a-icon type="close" />
+        </a-button>
       </div>
     </div>
     <a-tabs
@@ -46,7 +49,7 @@
       :animated="false"
     >
       <a-tab-pane key="overview" :tab="$t('trading-assistant.tabs.overview')">
-        <dashboard-overview v-if="topTab === 'overview'" />
+        <dashboard-overview v-if="topTab === 'overview'" :hide-setup-guide="true" />
       </a-tab-pane>
       <a-tab-pane key="strategy" :tab="$t('trading-assistant.tabs.strategyManage')">
     <a-row :gutter="24" class="strategy-layout">
@@ -86,7 +89,6 @@
             <div v-if="!loading && strategies.length === 0" class="strategy-empty-state">
               <a-empty :description="$t('trading-assistant.empty.title')" />
               <div class="strategy-empty-desc">{{ $t('trading-assistant.empty.desc') }}</div>
-              <div class="strategy-empty-path">{{ $t('trading-assistant.empty.path') }}</div>
               <a-button type="primary" @click="openCreateStrategyFromGuide">
                 <a-icon type="plus" />
                 {{ $t('trading-assistant.empty.primary') }}
@@ -136,19 +138,29 @@
                   <div
                     v-for="item in group.strategies"
                     :key="item.id"
-                    :class="['strategy-list-item', { active: selectedStrategy && selectedStrategy.id === item.id }]"
+                    :class="[
+                      'strategy-list-item',
+                      { active: selectedStrategy && selectedStrategy.id === item.id },
+                      { 'strategy-list-item--strategy-group': groupByMode === 'strategy' }
+                    ]"
                     @click="handleSelectStrategy(item)">
                     <div class="strategy-item-content">
                       <div class="strategy-item-header">
-                        <div class="strategy-name-wrapper">
-                          <!-- 按策略分组：显示 Symbol -->
+                        <div :class="['strategy-name-wrapper', { 'strategy-name-wrapper--grouped': groupByMode === 'symbol' }]">
                           <template v-if="groupByMode === 'strategy'">
-                            <span class="info-item" v-if="item.trading_config && item.trading_config.symbol">
-                              <a-icon type="dollar" />
-                              {{ item.trading_config.symbol }}
-                            </span>
+                            <span class="strategy-name">{{ item.strategy_name }}</span>
+                            <a-tag
+                              v-if="item.strategy_type === 'PromptBasedStrategy'"
+                              color="purple"
+                              size="small"
+                              class="strategy-type-tag">
+                              <a-icon type="robot" style="margin-right: 2px;" />
+                              AI
+                            </a-tag>
+                            <a-tag v-if="item.strategy_mode === 'script'" size="small" color="green" style="margin-left: 4px;">
+                              <a-icon type="code" style="margin-right: 2px;" />{{ $t('trading-assistant.strategyMode.script') }}
+                            </a-tag>
                           </template>
-                          <!-- 按 Symbol 分组：显示策略名称、周期、指标 -->
                           <template v-else>
                             <span class="info-item strategy-name-text">
                               <a-icon type="thunderbolt" />
@@ -162,19 +174,37 @@
                               <a-icon type="line-chart" style="margin-right: 2px;" />
                               {{ item.displayInfo.indicatorName }}
                             </a-tag>
+                            <a-tag v-if="item.strategy_mode === 'script'" size="small" color="green" style="margin-left: 4px;">
+                              <a-icon type="code" style="margin-right: 2px;" />{{ $t('trading-assistant.strategyMode.script') }}
+                            </a-tag>
                           </template>
-                          <a-tag v-if="item.strategy_mode === 'script'" size="small" color="green" style="margin-left: 4px;">
-                            <a-icon type="code" style="margin-right: 2px;" />{{ $t('trading-assistant.strategyMode.script') }}
-                          </a-tag>
-                          <span
-                            class="status-label"
-                            :class="[
-                              item.status ? `status-${item.status}` : '',
-                              { 'status-stopped': item.status === 'stopped' }
-                            ]">
-                            {{ getStatusText(item.status) }}
-                          </span>
                         </div>
+                      </div>
+                      <div class="strategy-item-info">
+                        <template v-if="groupByMode === 'strategy'">
+                          <span class="info-item" v-if="item.trading_config && item.trading_config.symbol">
+                            <a-icon type="dollar" />
+                            {{ item.trading_config.symbol }}
+                          </span>
+                          <span
+                            class="info-item"
+                            v-if="item.exchange_config && item.exchange_config.exchange_id">
+                            <a-icon type="bank" />
+                            {{ getExchangeDisplayName(item.exchange_config.exchange_id) }}
+                          </span>
+                          <span class="info-item" v-if="item.trading_config && item.trading_config.timeframe">
+                            <a-icon type="clock-circle" />
+                            {{ item.trading_config.timeframe }}
+                          </span>
+                        </template>
+                        <span
+                          class="status-label"
+                          :class="[
+                            item.status ? `status-${item.status}` : '',
+                            { 'status-stopped': item.status === 'stopped' }
+                          ]">
+                          {{ getStatusText(item.status) }}
+                        </span>
                       </div>
                     </div>
                     <div class="strategy-item-actions" @click.stop>
@@ -296,8 +326,20 @@
         :lg="16"
         :xl="16"
         class="strategy-detail-col">
-        <div v-if="!selectedStrategy" class="empty-detail">
-          <a-empty :description="$t('trading-assistant.selectStrategy')" />
+        <div v-if="!selectedStrategy" class="strategy-empty-detail">
+          <div class="strategy-empty-detail-card">
+            <div class="strategy-empty-detail-icon">
+              <a-icon type="deployment-unit" />
+            </div>
+            <h3 class="strategy-empty-detail-title">{{ $t('trading-assistant.emptyDetail.title') }}</h3>
+            <p class="strategy-empty-detail-hint">{{ $t('trading-assistant.emptyDetail.hint') }}</p>
+            <div class="strategy-empty-detail-actions">
+              <a-button type="primary" @click="handleCreateStrategy">
+                <a-icon type="plus" />
+                {{ $t('trading-assistant.createStrategy') }}
+              </a-button>
+            </div>
+          </div>
         </div>
 
         <div v-else class="strategy-detail-panel">
@@ -414,10 +456,14 @@
                   :strategy-id="selectedStrategy.id"
                   :market-type="(selectedStrategy.trading_config && selectedStrategy.trading_config.market_type) || 'swap'"
                   :leverage="(selectedStrategy.trading_config && selectedStrategy.trading_config.leverage) || 1"
-                  :loading="loadingRecords" />
+                  :loading="loadingRecords"
+                  :is-dark="isDarkTheme" />
               </a-tab-pane>
               <a-tab-pane key="trades" :tab="$t('trading-assistant.tabs.tradingRecords')">
-                <trading-records :strategy-id="selectedStrategy.id" :loading="loadingRecords" />
+                <trading-records
+                  :strategy-id="selectedStrategy.id"
+                  :loading="loadingRecords"
+                  :is-dark="isDarkTheme" />
               </a-tab-pane>
               <a-tab-pane key="performance" :tab="$t('trading-assistant.tabs.performance')">
                 <performance-analysis
@@ -530,6 +576,21 @@
                   <div class="form-item-hint">
                     {{ $t('trading-assistant.form.indicatorHint') }}
                   </div>
+                  <a-alert
+                    v-if="!loadingIndicators && (!availableIndicators || availableIndicators.length === 0)"
+                    type="info"
+                    show-icon
+                    style="margin-top: 12px;"
+                    :message="$t('trading-assistant.indicatorEmpty.title')"
+                    :description="$t('trading-assistant.indicatorEmpty.desc')"
+                  >
+                    <template slot="action">
+                      <a-button type="primary" size="small" @click="goToIndicatorAnalysisCreate">
+                        <a-icon type="rocket" />
+                        {{ $t('trading-assistant.indicatorEmpty.cta') }}
+                      </a-button>
+                    </template>
+                  </a-alert>
                 </a-form-item>
 
                 <a-form-item v-if="selectedIndicator" :label="$t('trading-assistant.form.indicatorDescription')">
@@ -1077,6 +1138,46 @@
                     </a-form-item>
                   </a-col>
                 </a-row>
+
+                <a-row :gutter="16">
+                  <a-col :xs="24" :sm="12">
+                    <a-form-item :label="$t('trading-assistant.form.tradeDirection')">
+                      <a-select
+                        v-decorator="['trade_direction', { initialValue: 'both' }]"
+                        :getPopupContainer="(triggerNode) => triggerNode.parentNode">
+                        <a-select-option value="long">{{ $t('trading-assistant.form.tradeDirectionLong') }}</a-select-option>
+                        <a-select-option value="short">{{ $t('trading-assistant.form.tradeDirectionShort') }}</a-select-option>
+                        <a-select-option value="both">{{ $t('trading-assistant.form.tradeDirectionBoth') }}</a-select-option>
+                      </a-select>
+                    </a-form-item>
+                  </a-col>
+                  <a-col :xs="24" :sm="12">
+                    <a-form-item :label="$t('dashboard.indicator.backtest.commission')">
+                      <a-input-number
+                        v-decorator="['commission', { initialValue: 0.05 }]"
+                        :min="0"
+                        :max="100"
+                        :step="0.01"
+                        :precision="4"
+                        style="width: 100%"
+                      />
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+                <a-row :gutter="16">
+                  <a-col :xs="24" :sm="12">
+                    <a-form-item :label="$t('dashboard.indicator.backtest.field.slippage')">
+                      <a-input-number
+                        v-decorator="['slippage', { initialValue: 0 }]"
+                        :min="0"
+                        :max="100"
+                        :step="0.01"
+                        :precision="4"
+                        style="width: 100%"
+                      />
+                    </a-form-item>
+                  </a-col>
+                </a-row>
               </a-form>
             </div>
           </div>
@@ -1099,7 +1200,7 @@
             <div v-if="strategyType === 'indicator'">
               <a-form :form="form" layout="vertical">
                 <!-- Backtest-like configuration (aligned with indicator-analysis BacktestModal) -->
-                <a-collapse v-model="backtestCollapseKeys" :bordered="false" style="background: #fafafa;">
+                <a-collapse v-model="backtestCollapseKeys" :bordered="false" class="strategy-params-collapse">
                   <a-collapse-panel key="risk" :header="$t('dashboard.indicator.backtest.panel.risk')">
                     <a-row :gutter="24">
                       <a-col :span="12">
@@ -1507,25 +1608,19 @@
                   </a-alert>
                 </div>
 
-                <div v-if="executionModeUi === 'live' && canUseLiveTrading" class="execution-section-card risk-section-card">
+                <div v-if="executionModeUi === 'live' && canUseLiveTrading" class="execution-section-card">
                   <div class="section-block-title">
-                    <span>{{ $t('trading-assistant.form.riskSectionTitle') }}</span>
-                    <span class="section-block-desc">{{ $t('trading-assistant.form.riskSectionDesc') }}</span>
+                    <span>{{ $t('trading-assistant.form.liveConnectionSectionTitle') }}</span>
+                    <span class="section-block-desc">{{ $t('trading-assistant.form.liveConnectionSectionDesc') }}</span>
                   </div>
 
                   <a-alert
                     type="warning"
                     show-icon
                     class="section-inline-alert"
+                    style="margin-bottom: 16px;"
                     :message="$t('trading-assistant.form.liveTradingConfigTitle')"
                     :description="$t('trading-assistant.form.liveTradingConfigHint')" />
-                </div>
-
-                <div v-if="executionModeUi === 'live' && canUseLiveTrading" class="execution-section-card">
-                  <div class="section-block-title">
-                    <span>{{ $t('trading-assistant.form.liveConnectionSectionTitle') }}</span>
-                    <span class="section-block-desc">{{ $t('trading-assistant.form.liveConnectionSectionDesc') }}</span>
-                  </div>
 
                   <a-form-item :label="$t('trading-assistant.form.savedCredential')" class="compact-form-item">
                     <a-select
@@ -1546,11 +1641,29 @@
                         {{ formatCredentialLabel(cred) }}
                       </a-select-option>
                     </a-select>
-                    <div class="form-item-hint" style="margin-top: 6px;">
+                    <div class="form-item-hint ta-credential-actions" style="margin-top: 6px;">
+                      <a-button type="link" size="small" class="ta-add-cred-btn" @click="showExchangeAccountModal = true">
+                        <a-icon type="plus-circle" /> {{ $t('quickTrade.addAccountInline') }}
+                      </a-button>
+                      <span class="ta-credential-actions-sep">·</span>
                       <router-link to="/profile?tab=exchange">
                         <a-icon type="setting" style="margin-right: 4px;" />{{ $t('profile.exchange.goToManage') }}
                       </router-link>
                     </div>
+                    <a-alert
+                      v-if="executionModeUi === 'live' && canUseLiveTrading && !loadingExchangeCredentials && filteredExchangeCredentials.length === 0"
+                      type="warning"
+                      show-icon
+                      style="margin-top: 10px;"
+                      :message="$t('trading-assistant.noCredentialForLive.title')"
+                    >
+                      <template slot="description">
+                        <span>{{ $t('trading-assistant.noCredentialForLive.desc') }}</span>
+                        <a-button type="primary" size="small" style="margin-left: 8px;" @click="showExchangeAccountModal = true">
+                          {{ $t('quickTrade.addAccountInline') }}
+                        </a-button>
+                      </template>
+                    </a-alert>
                   </a-form-item>
                 </div>
               </div>
@@ -1684,6 +1797,11 @@
     </a-modal>
       </a-tab-pane>
     </a-tabs>
+
+    <exchange-account-modal
+      :visible.sync="showExchangeAccountModal"
+      @success="handleExchangeAccountCreated"
+    />
   </div>
 </template>
 
@@ -1701,6 +1819,7 @@ import StrategyEditor from './components/StrategyEditor.vue'
 import PerformanceAnalysis from './components/PerformanceAnalysis.vue'
 import StrategyLogs from './components/StrategyLogs.vue'
 import DashboardOverview from '@/views/dashboard/index.vue'
+import ExchangeAccountModal from '@/components/ExchangeAccountModal/ExchangeAccountModal.vue'
 
 // 常见加密货币交易对
 const CRYPTO_SYMBOLS = [
@@ -1751,9 +1870,17 @@ export default {
     StrategyEditor,
     PerformanceAnalysis,
     StrategyLogs,
-    DashboardOverview
+    DashboardOverview,
+    ExchangeAccountModal
   },
   computed: {
+    showAssistantGuide () {
+      return !this.assistantGuideDismissed
+    },
+    assistantGuideStorageKey () {
+      const userId = this.$store.getters.userInfo?.id || 'guest'
+      return `trading-assistant-guide-dismissed:${userId}`
+    },
     isAdvancedMode () {
       return this.creationMode === 'advanced'
     },
@@ -2147,6 +2274,7 @@ export default {
       // Exchange credentials vault
       loadingExchangeCredentials: false,
       exchangeCredentials: [],
+      showExchangeAccountModal: false,
       saveCredentialUi: false,
       suppressApiClearOnce: false,
       // 多币种选择（创建模式）
@@ -2174,7 +2302,8 @@ export default {
       addingSymbol: false,
       hotSymbols: [],
       loadingHotSymbols: false,
-      searchTimer: null
+      searchTimer: null,
+      assistantGuideDismissed: false
       // Market category is inferred from Step 1 watchlist symbol ("Market:SYMBOL").
     }
   },
@@ -2182,6 +2311,7 @@ export default {
     this.form = this.$form.createForm(this)
   },
   mounted () {
+    this.restoreAssistantGuidePreference()
     if (this.$route.query.tab === 'strategy' || this.$route.query.mode === 'create') {
       this.topTab = 'strategy'
     }
@@ -2206,6 +2336,19 @@ export default {
     this.stopEquityPolling()
   },
   methods: {
+    restoreAssistantGuidePreference () {
+      try {
+        this.assistantGuideDismissed = window.localStorage.getItem(this.assistantGuideStorageKey) === '1'
+      } catch (e) {
+        this.assistantGuideDismissed = false
+      }
+    },
+    dismissAssistantGuide () {
+      this.assistantGuideDismissed = true
+      try {
+        window.localStorage.setItem(this.assistantGuideStorageKey, '1')
+      } catch (e) {}
+    },
     goToStrategyTab () {
       this.topTab = 'strategy'
     },
@@ -2638,6 +2781,25 @@ export default {
         this.$message.warning(this.$t('trading-assistant.exchange.testFailed'))
       } finally {
         this.loadingExchangeCredentials = false
+      }
+    },
+    goToIndicatorAnalysisCreate () {
+      this.$router.push('/indicator-analysis')
+    },
+    async handleExchangeAccountCreated (data) {
+      await this.loadExchangeCredentials()
+      const newId = data && (data.id || data.credential_id)
+      if (newId) {
+        try {
+          this.form && this.form.setFieldsValue && this.form.setFieldsValue({ credential_id: newId })
+        } catch (e) { }
+        await this.handleCredentialSelectChange(newId)
+      } else if (this.exchangeCredentials.length === 1) {
+        const id = this.exchangeCredentials[0].id
+        try {
+          this.form && this.form.setFieldsValue && this.form.setFieldsValue({ credential_id: id })
+        } catch (e) { }
+        await this.handleCredentialSelectChange(id)
       }
     },
     formatCredentialLabel (cred) {
@@ -3354,6 +3516,7 @@ export default {
         name: groupName
       })
       this.$confirm({
+        class: this.isDarkTheme ? 'ta-strategy-confirm-modal' : '',
         title: this.$t('trading-assistant.deleteAll'),
         content: confirmText,
         okText: this.$t('trading-assistant.deleteAll'),
@@ -3419,6 +3582,7 @@ export default {
         name: strategy.strategy_name
       })
       this.$confirm({
+        class: this.isDarkTheme ? 'ta-strategy-confirm-modal' : '',
         title: this.$t('trading-assistant.deleteStrategy'),
         content: confirmText,
         okText: this.$t('trading-assistant.deleteStrategy'),
@@ -3681,12 +3845,16 @@ export default {
         momentum: 'green',
         volatility: 'orange',
         volume: 'purple',
-        custom: 'default'
+        custom: 'cyan',
+        python: 'geekblue',
+        pine: 'magenta'
       }
-      return colors[type] || 'default'
+      return colors[type] || 'cyan'
     },
     getIndicatorTypeName (type) {
-      return this.$t(`trading-assistant.indicatorType.${type}`) || type
+      const key = `trading-assistant.indicatorType.${type}`
+      const translated = this.$t(key)
+      return translated !== key ? translated : type
     },
     // 交易所相关方法
     getExchangeName (exchange) {
@@ -3989,6 +4157,17 @@ export default {
                 symbol = symbol.slice(idx + 1)
               }
 
+              const marketType = (values.market_type === 'futures' ? 'swap' : (values.market_type || 'swap'))
+              let leverage = values.leverage != null ? values.leverage : 5
+              let tradeDirection = values.trade_direction || 'both'
+              if (marketType === 'spot') {
+                leverage = 1
+                tradeDirection = 'long'
+              } else {
+                if (leverage < 1) leverage = 1
+                if (leverage > 125) leverage = 125
+              }
+
               const payload = {
                 user_id: 1,
                 strategy_name: values.strategy_name,
@@ -4000,10 +4179,13 @@ export default {
                 notification_config: notificationConfig,
                 trading_config: {
                   initial_capital: values.initial_capital || 1000,
-                  leverage: values.leverage || 1,
+                  leverage,
+                  trade_direction: tradeDirection,
                   timeframe: values.timeframe || '15m',
-                  market_type: values.market_type || 'swap',
-                  symbol: symbol
+                  market_type: marketType,
+                  symbol: symbol,
+                  commission: values.commission != null ? values.commission : 0,
+                  slippage: values.slippage != null ? values.slippage : 0
                 }
               }
 
@@ -4348,6 +4530,25 @@ export default {
     display: flex;
     gap: 8px;
     flex-shrink: 0;
+
+    .assistant-guide-close {
+      min-width: 36px;
+      width: 36px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-color: rgba(148, 163, 184, 0.28);
+      color: #64748b;
+      background: rgba(255, 255, 255, 0.72);
+
+      &:hover,
+      &:focus {
+        color: #1677ff;
+        border-color: rgba(24, 144, 255, 0.35);
+        background: #fff;
+      }
+    }
   }
 }
 
@@ -4391,6 +4592,7 @@ export default {
 
   .strategy-layout {
     height: calc(100vh - 120px);
+    align-items: stretch;
   }
 
   // 移动端适配
@@ -4738,6 +4940,8 @@ export default {
 
   .strategy-list-col {
     height: 100%;
+    display: flex;
+    flex-direction: column;
 
     .strategy-list-card {
       height: 100%;
@@ -4905,18 +5109,21 @@ export default {
           }
 
           .strategy-group-content {
-            padding: 4px 8px 8px;
+            padding: 6px 8px 10px 6px;
 
             .strategy-list-item {
               display: flex;
               justify-content: space-between;
               align-items: center;
-              padding: 8px 10px;
-              margin-bottom: 4px;
-              margin-left: 20px;
-              border-left: 2px solid #e8ecf1;
-              background: #fafbfc;
-              border-radius: 0 @border-radius-sm @border-radius-sm 0;
+              gap: 8px;
+              padding: 10px 12px;
+              margin-bottom: 6px;
+              margin-left: 4px;
+              border: 1px solid #eef2f6;
+              border-left: 3px solid #dbe4ee;
+              background: #fbfcfe;
+              border-radius: @border-radius-sm;
+              box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 
               &:last-child {
                 margin-bottom: 0;
@@ -4925,12 +5132,17 @@ export default {
               &:hover {
                 background: #f0f7ff;
                 border-left-color: @primary-color;
+                border-color: rgba(24, 144, 255, 0.22);
+                box-shadow: 0 2px 8px rgba(24, 144, 255, 0.08);
+                transform: none;
               }
 
               &.active {
-                background: #e6f4ff;
+                background: linear-gradient(135deg, #e8f4ff 0%, #f0f9ff 100%);
+                border-color: rgba(24, 144, 255, 0.35);
                 border-left-color: @primary-color;
                 border-left-width: 3px;
+                box-shadow: 0 2px 12px rgba(24, 144, 255, 0.12);
               }
 
               .strategy-item-content {
@@ -4938,8 +5150,110 @@ export default {
                 min-width: 0;
               }
 
+              .strategy-item-header {
+                align-items: flex-start;
+                width: 100%;
+              }
+
               .strategy-item-actions {
                 flex-shrink: 0;
+                display: flex;
+                align-items: center;
+                align-self: center;
+                padding-top: 0;
+                margin-left: 4px;
+
+                /deep/ .ant-btn {
+                  display: inline-flex;
+                  align-items: center;
+                  justify-content: center;
+                }
+              }
+
+              .strategy-item-info {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+                flex-wrap: wrap;
+                margin-top: 4px;
+                font-size: 12px;
+                color: #8c8c8c;
+
+                .info-item {
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 4px;
+                  white-space: nowrap;
+
+                  .anticon {
+                    font-size: 12px;
+                  }
+                }
+
+                .status-label {
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 6px;
+                  padding: 3px 10px;
+                  border-radius: 16px;
+                  font-size: 11px;
+                  font-weight: 600;
+                  line-height: 1;
+                  border: 1px solid transparent;
+                  flex-shrink: 0;
+                  background: linear-gradient(135deg, #f0f2f5 0%, #e8eaed 100%);
+                  color: #595959;
+
+                  &::before {
+                    content: '';
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 50%;
+                    background: currentColor;
+                  }
+                }
+
+                .status-running {
+                  background: linear-gradient(135deg, rgba(14, 203, 129, 0.15) 0%, rgba(14, 203, 129, 0.08) 100%);
+                  color: @success-color;
+                  border-color: rgba(14, 203, 129, 0.3);
+                }
+
+                .status-stopped {
+                  background: linear-gradient(135deg, rgba(246, 70, 93, 0.15) 0%, rgba(246, 70, 93, 0.08) 100%);
+                  color: @danger-color;
+                  border-color: rgba(246, 70, 93, 0.3);
+                }
+
+                .status-error {
+                  background: linear-gradient(135deg, rgba(255, 77, 79, 0.15) 0%, rgba(255, 77, 79, 0.08) 100%);
+                  color: #ff4d4f;
+                  border-color: rgba(255, 77, 79, 0.3);
+                }
+              }
+
+              &.strategy-list-item--strategy-group {
+                .strategy-item-header {
+                  margin-bottom: 2px;
+                }
+
+                .strategy-name-wrapper {
+                  flex-wrap: nowrap;
+                  align-items: center;
+                  gap: 8px;
+                }
+
+                .strategy-name {
+                  flex: 1;
+                  min-width: 0;
+                  overflow: hidden;
+                  text-overflow: ellipsis;
+                  white-space: nowrap;
+                }
+
+                .strategy-item-info {
+                  gap: 10px;
+                }
               }
             }
           }
@@ -4947,6 +5261,10 @@ export default {
       }
 
       .strategy-list-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
         cursor: pointer;
         padding: 14px 16px;
         border-radius: @border-radius-md;
@@ -4956,10 +5274,91 @@ export default {
         background: #fafbfc;
         border: 1px solid transparent;
 
+        .strategy-item-content {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .strategy-item-actions {
+          flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          align-self: center;
+          margin-left: 4px;
+
+          /deep/ .ant-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+          }
+        }
+
+        .strategy-item-info {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          flex-wrap: wrap;
+          margin-top: 4px;
+          font-size: 12px;
+          color: #8c8c8c;
+
+          .info-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+
+            .anticon {
+              font-size: 12px;
+            }
+          }
+
+          .status-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 10px;
+            border-radius: 16px;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1;
+            border: 1px solid transparent;
+            flex-shrink: 0;
+            background: linear-gradient(135deg, #f0f2f5 0%, #e8eaed 100%);
+            color: #595959;
+
+            &::before {
+              content: '';
+              width: 6px;
+              height: 6px;
+              border-radius: 50%;
+              background: currentColor;
+            }
+          }
+
+          .status-running {
+            background: linear-gradient(135deg, rgba(14, 203, 129, 0.15) 0%, rgba(14, 203, 129, 0.08) 100%);
+            color: @success-color;
+            border-color: rgba(14, 203, 129, 0.3);
+          }
+
+          .status-stopped {
+            background: linear-gradient(135deg, rgba(246, 70, 93, 0.15) 0%, rgba(246, 70, 93, 0.08) 100%);
+            color: @danger-color;
+            border-color: rgba(246, 70, 93, 0.3);
+          }
+
+          .status-error {
+            background: linear-gradient(135deg, rgba(255, 77, 79, 0.15) 0%, rgba(255, 77, 79, 0.08) 100%);
+            color: #ff4d4f;
+            border-color: rgba(255, 77, 79, 0.3);
+          }
+        }
+
         &:hover {
           background: linear-gradient(135deg, #f0f7ff 0%, #f5f9ff 100%);
           border-color: rgba(24, 144, 255, 0.2);
-          transform: translateX(4px);
+          transform: none;
           box-shadow: 0 2px 12px rgba(24, 144, 255, 0.1);
         }
 
@@ -5033,6 +5432,23 @@ export default {
               .anticon {
                 font-size: 10px;
                 margin-right: 3px;
+              }
+            }
+
+            &.strategy-name-wrapper--grouped {
+              flex-wrap: wrap;
+              align-items: flex-start;
+              align-content: flex-start;
+              row-gap: 6px;
+              column-gap: 6px;
+              width: 100%;
+
+              /deep/ .ant-tag {
+                margin-right: 0;
+              }
+
+              .status-label {
+                flex-shrink: 0;
               }
             }
           }
@@ -5131,7 +5547,9 @@ export default {
               &.strategy-name-text {
                 font-weight: 500;
                 color: #1e3a5f;
-                max-width: 120px;
+                max-width: 100%;
+                white-space: normal;
+                line-height: 1.35;
               }
             }
 
@@ -5153,29 +5571,59 @@ export default {
     flex-direction: column;
     overflow-y: auto;
 
-    .empty-detail {
-      height: 100%;
+    .strategy-empty-detail {
+      flex: 1;
+      min-height: 320px;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(248, 250, 252, 0.9) 100%);
+      padding: 24px 16px;
+    }
+
+    .strategy-empty-detail-card {
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      padding: 40px 32px 36px;
       border-radius: @border-radius-lg;
-      border: 2px dashed #e0e6ed;
-      transition: all 0.3s ease;
+      background: linear-gradient(165deg, #ffffff 0%, #f8fafc 55%, #f1f5f9 100%);
+      border: 1px solid #e8ecf1;
+      box-shadow: @card-shadow;
+    }
 
-      &:hover {
-        border-color: @primary-color;
-        background: linear-gradient(135deg, rgba(24, 144, 255, 0.02) 0%, rgba(24, 144, 255, 0.05) 100%);
-      }
+    .strategy-empty-detail-icon {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 20px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, rgba(24, 144, 255, 0.12) 0%, rgba(64, 169, 255, 0.08) 100%);
+      color: @primary-color;
+      font-size: 32px;
+    }
 
-      /deep/ .ant-empty-image {
-        opacity: 0.6;
-      }
+    .strategy-empty-detail-title {
+      margin: 0 0 12px;
+      font-size: 18px;
+      font-weight: 700;
+      color: #1e3a5f;
+      letter-spacing: 0.02em;
+    }
 
-      /deep/ .ant-empty-description {
-        color: #8c8c8c;
-        font-size: 14px;
-      }
+    .strategy-empty-detail-hint {
+      margin: 0 0 24px;
+      font-size: 14px;
+      line-height: 1.65;
+      color: #64748b;
+    }
+
+    .strategy-empty-detail-actions {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 12px;
     }
 
     .strategy-detail-panel {
@@ -5492,6 +5940,10 @@ export default {
             }
 
             .ant-tabs-tabpane {
+              .strategy-tab-pane-inner {
+                min-height: 304px;
+                padding-top: 2px;
+              }
 
               .trading-records,
               .position-records {
@@ -5505,7 +5957,7 @@ export default {
   }
 
   &.theme-dark {
-    background: linear-gradient(180deg, #0d1117 0%, #161b22 100%);
+    background: #141414;
     color: var(--dark-text-color, #fff);
 
     .creation-mode-toggle {
@@ -5520,7 +5972,7 @@ export default {
     // 左侧策略列表卡片
     .strategy-list-col {
       .strategy-list-card {
-        background: linear-gradient(180deg, #1e222d 0%, #1a1e28 100%);
+        background: #1c1c1c;
         border: 1px solid rgba(255, 255, 255, 0.06);
         box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
 
@@ -5532,7 +5984,7 @@ export default {
         }
 
         /deep/ .ant-card-head {
-          background: linear-gradient(180deg, #252a36 0%, #1e222d 100%);
+          background: #1c1c1c;
           border-bottom-color: rgba(255, 255, 255, 0.06);
 
           .ant-card-head-title {
@@ -5563,17 +6015,120 @@ export default {
         }
       }
 
+      .group-mode-switch {
+        border-bottom-color: rgba(255, 255, 255, 0.08);
+
+        .group-mode-label {
+          color: rgba(255, 255, 255, 0.45);
+        }
+
+        /deep/ .ant-radio-button-wrapper {
+          background: rgba(255, 255, 255, 0.04);
+          border-color: rgba(255, 255, 255, 0.12);
+          color: rgba(255, 255, 255, 0.65);
+
+          &:hover {
+            color: #69c0ff;
+          }
+        }
+
+        /deep/ .ant-radio-button-wrapper-checked {
+          background: rgba(24, 144, 255, 0.25) !important;
+          border-color: @primary-color !important;
+          color: #fff !important;
+        }
+      }
+
+      .strategy-group {
+        background: rgba(0, 0, 0, 0.18);
+        border-color: rgba(255, 255, 255, 0.08);
+      }
+
+      .strategy-group-header {
+        background: rgba(255, 255, 255, 0.04);
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.06);
+        }
+
+        .group-name {
+          color: rgba(255, 255, 255, 0.88);
+        }
+
+        .collapse-icon {
+          color: rgba(255, 255, 255, 0.45);
+        }
+      }
+
+      .strategy-group-content .strategy-list-item {
+        background: rgba(255, 255, 255, 0.03);
+        border-color: rgba(255, 255, 255, 0.08);
+        border-left-color: rgba(255, 255, 255, 0.12);
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.05);
+          border-color: rgba(255, 255, 255, 0.12);
+          border-left-color: @primary-color;
+        }
+
+        &.active {
+          background: rgba(24, 144, 255, 0.12);
+          border-color: rgba(24, 144, 255, 0.28);
+          border-left-color: @primary-color;
+        }
+
+        .strategy-item-info {
+          color: #868993;
+
+          .info-item {
+            color: rgba(255, 255, 255, 0.55);
+          }
+
+          .status-label {
+            background: rgba(255, 255, 255, 0.06);
+            color: rgba(255, 255, 255, 0.45);
+            border-color: rgba(255, 255, 255, 0.1);
+          }
+
+          .status-running {
+            background: rgba(14, 203, 129, 0.12);
+            color: #52c41a;
+            border-color: rgba(14, 203, 129, 0.25);
+          }
+
+          .status-stopped {
+            background: rgba(246, 70, 93, 0.12);
+            color: @danger-color;
+            border-color: rgba(246, 70, 93, 0.25);
+          }
+
+          .status-error {
+            background: rgba(255, 77, 79, 0.12);
+            color: #ff4d4f;
+            border-color: rgba(255, 77, 79, 0.25);
+          }
+        }
+      }
+
+      .strategy-name-wrapper {
+        .info-item,
+        .strategy-name-text {
+          color: rgba(255, 255, 255, 0.88) !important;
+        }
+      }
+
       .strategy-list-item {
         background: rgba(255, 255, 255, 0.02);
         border: 1px solid rgba(255, 255, 255, 0.04);
 
         &:hover {
-          background: linear-gradient(135deg, rgba(24, 144, 255, 0.08) 0%, rgba(24, 144, 255, 0.04) 100%);
-          border-color: rgba(24, 144, 255, 0.2);
+          background: rgba(255, 255, 255, 0.04);
+          border-color: rgba(255, 255, 255, 0.1);
+          transform: none;
         }
 
         &.active {
-          background: linear-gradient(135deg, rgba(24, 144, 255, 0.12) 0%, rgba(24, 144, 255, 0.06) 100%);
+          background: rgba(24, 144, 255, 0.1);
           border-color: @primary-color;
           box-shadow: 0 4px 20px rgba(24, 144, 255, 0.2);
         }
@@ -5585,13 +6140,31 @@ export default {
         .strategy-item-info {
           color: #868993;
         }
+
+        .strategy-item-header {
+          .exchange-tag {
+            background: rgba(102, 126, 234, 0.15);
+            border-color: rgba(102, 126, 234, 0.3);
+            color: #8da2f0;
+          }
+
+          .strategy-type-tag {
+            background: rgba(177, 130, 255, 0.15);
+            border-color: rgba(177, 130, 255, 0.3);
+            color: #b182ff;
+          }
+
+          .strategy-name {
+            color: rgba(255, 255, 255, 0.88);
+          }
+        }
       }
     }
 
     // 右侧策略详情卡片
     .strategy-detail-col {
       .strategy-header-card {
-        background: linear-gradient(135deg, #1e222d 0%, #1a1e28 100%);
+        background: #1c1c1c;
         border: 1px solid rgba(255, 255, 255, 0.06);
         box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
 
@@ -5606,10 +6179,9 @@ export default {
 
         .strategy-title-row {
           .strategy-title {
-            background: linear-gradient(135deg, #e0e6ed 0%, #c5ccd6 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            background: none;
+            color: #e0e6ed;
+            -webkit-text-fill-color: initial;
           }
         }
 
@@ -5650,12 +6222,12 @@ export default {
       }
 
       .strategy-content-card {
-        background: linear-gradient(180deg, #1e222d 0%, #1a1e28 100%);
+        background: #1c1c1c;
         border: 1px solid rgba(255, 255, 255, 0.06);
         box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
 
         /deep/ .ant-card-head {
-          background: rgba(255, 255, 255, 0.02);
+          background: #1c1c1c;
           border-bottom-color: rgba(255, 255, 255, 0.06);
 
           .ant-card-head-title {
@@ -5697,12 +6269,24 @@ export default {
           color: #868993;
         }
       }
-    }
 
-    // 空状态
-    .empty-detail {
-      /deep/ .ant-empty-description {
-        color: #868993;
+      .strategy-empty-detail-card {
+        background: #1c1c1c;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+      }
+
+      .strategy-empty-detail-icon {
+        background: linear-gradient(135deg, rgba(24, 144, 255, 0.22) 0%, rgba(64, 169, 255, 0.1) 100%);
+        color: #69c0ff;
+      }
+
+      .strategy-empty-detail-title {
+        color: rgba(255, 255, 255, 0.92);
+      }
+
+      .strategy-empty-detail-hint {
+        color: rgba(255, 255, 255, 0.55);
       }
     }
   }
@@ -5727,7 +6311,7 @@ export default {
     }
 
     .assistant-step-card {
-      background: rgba(15, 23, 42, 0.38);
+      background: rgba(30, 30, 30, 0.6);
       border-color: rgba(255, 255, 255, 0.08);
     }
 
@@ -5737,6 +6321,19 @@ export default {
 
     .assistant-step-desc {
       color: rgba(255, 255, 255, 0.58);
+    }
+
+    .assistant-guide-close {
+      background: rgba(30, 30, 30, 0.5);
+      border-color: rgba(255, 255, 255, 0.1);
+      color: rgba(255, 255, 255, 0.72);
+
+      &:hover,
+      &:focus {
+        background: rgba(50, 50, 50, 0.7);
+        border-color: rgba(105, 192, 255, 0.45);
+        color: #91d5ff;
+      }
     }
   }
 
@@ -5748,6 +6345,30 @@ export default {
     .strategy-empty-path {
       color: rgba(255, 255, 255, 0.48);
     }
+  }
+}
+
+/* Strategy params collapse (Step 2) */
+.strategy-params-collapse {
+  background: #fafafa;
+  border-radius: 10px;
+  overflow: hidden;
+
+  /deep/ .ant-collapse-item {
+    border-bottom-color: #f0f0f0;
+  }
+
+  /deep/ .ant-collapse-header {
+    font-weight: 500;
+    font-size: 13px;
+  }
+
+  /deep/ .ant-collapse-content-box {
+    padding: 12px 16px;
+  }
+
+  /deep/ .ant-input-number {
+    width: 100%;
   }
 }
 
@@ -6531,13 +7152,54 @@ export default {
 <style lang="less">
 /* ========== Trading Assistant: Modal 暗色穿透样式 (non-scoped) ========== */
 body.dark {
+  /* --- Modal.confirm：删除策略 / 批量删除 --- */
+  .ta-strategy-confirm-modal.ant-modal-confirm {
+    .ant-modal-content {
+      background: #1e1e1e;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .ant-modal-body {
+      background: #1e1e1e;
+    }
+
+    .ant-modal-confirm-body .ant-modal-confirm-title {
+      color: rgba(255, 255, 255, 0.88);
+    }
+
+    .ant-modal-confirm-body .ant-modal-confirm-content {
+      color: rgba(255, 255, 255, 0.65);
+    }
+
+    .ant-modal-confirm-btns {
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding-top: 12px;
+    }
+
+    .ant-modal-confirm-btns .ant-btn-default {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.12);
+      color: rgba(255, 255, 255, 0.85);
+    }
+
+    .ant-modal-confirm-btns .ant-btn-danger {
+      background: #ff4d4f;
+      border-color: #ff4d4f;
+      color: #fff;
+    }
+
+    .ant-modal-confirm-body > .anticon {
+      color: #faad14;
+    }
+  }
+
   /* --- 策略类型选择弹窗 --- */
   .mode-selector-modal .ant-modal-content {
-    background: #1e222d;
+    background: #1e1e1e;
     border: 1px solid rgba(255, 255, 255, 0.08);
 
     .ant-modal-header {
-      background: #252a36;
+      background: #252525;
       border-bottom-color: rgba(255, 255, 255, 0.06);
 
       .ant-modal-title {
@@ -6556,12 +7218,12 @@ body.dark {
 
   /* --- 创建/编辑策略弹窗 --- */
   .strategy-form-modal.strategy-form-modal-dark .ant-modal-content {
-    background: #1e222d;
+    background: #1e1e1e;
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
 
     .ant-modal-header {
-      background: linear-gradient(180deg, #252a36 0%, #1e222d 100%);
+      background: #252525;
       border-bottom-color: rgba(255, 255, 255, 0.06);
 
       .ant-modal-title {
@@ -6575,7 +7237,7 @@ body.dark {
 
     .ant-modal-body {
       color: #d1d4dc;
-      background: linear-gradient(180deg, rgba(19, 23, 31, 0.72) 0%, rgba(30, 34, 45, 0.9) 100%);
+      background: #1e1e1e;
     }
 
     .creation-mode-toggle {
@@ -6599,7 +7261,8 @@ body.dark {
       color: rgba(255, 255, 255, 0.35) !important;
     }
 
-    .ant-steps-item-icon {
+    .ant-steps-item-wait .ant-steps-item-icon {
+      background: transparent;
       border-color: rgba(255, 255, 255, 0.2);
 
       .ant-steps-icon {
@@ -6607,10 +7270,21 @@ body.dark {
       }
     }
 
-    .ant-steps-item-finish,
-    .ant-steps-item-process {
-      .ant-steps-item-icon {
-        border-color: #1890ff;
+    .ant-steps-item-process .ant-steps-item-icon {
+      background: #1890ff;
+      border-color: #1890ff;
+
+      .ant-steps-icon {
+        color: #fff;
+      }
+    }
+
+    .ant-steps-item-finish .ant-steps-item-icon {
+      background: transparent;
+      border-color: #1890ff;
+
+      .ant-steps-icon {
+        color: #1890ff;
       }
     }
 
@@ -6638,7 +7312,7 @@ body.dark {
 
     .ant-input,
     .ant-input-number {
-      background: #1a1e28;
+      background: #1c1c1c;
       border-color: rgba(255, 255, 255, 0.12);
       color: #d1d4dc;
 
@@ -6653,7 +7327,7 @@ body.dark {
     }
 
     .ant-input-number-handler-wrap {
-      background: #252a36;
+      background: #252525;
       border-left-color: rgba(255, 255, 255, 0.12);
 
       .ant-input-number-handler {
@@ -6668,7 +7342,7 @@ body.dark {
 
     .ant-select {
       .ant-select-selection {
-        background: #1a1e28;
+        background: #1c1c1c;
         border-color: rgba(255, 255, 255, 0.12);
         color: #d1d4dc;
 
@@ -6684,7 +7358,7 @@ body.dark {
 
     .ant-radio-group {
       .ant-radio-button-wrapper {
-        background: #1a1e28;
+        background: #1c1c1c;
         border-color: rgba(255, 255, 255, 0.12);
         color: rgba(255, 255, 255, 0.65);
 
@@ -6713,7 +7387,7 @@ body.dark {
     }
 
     textarea.ant-input {
-      background: #1a1e28;
+      background: #1c1c1c;
       border-color: rgba(255, 255, 255, 0.12);
       color: #d1d4dc;
 
@@ -6725,6 +7399,31 @@ body.dark {
     .ant-form-explain,
     .ant-form-extra {
       color: rgba(255, 255, 255, 0.35);
+    }
+
+    .ant-form-item-label > label {
+      color: rgba(255, 255, 255, 0.75);
+    }
+
+    /* strategy params collapse dark */
+    .strategy-params-collapse {
+      background: #1c1c1c !important;
+      border-color: rgba(255, 255, 255, 0.08);
+
+      .ant-collapse-item {
+        border-color: rgba(255, 255, 255, 0.08);
+      }
+
+      .ant-collapse-header {
+        color: rgba(255, 255, 255, 0.85) !important;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .ant-collapse-content {
+        background: #1c1c1c;
+        border-color: rgba(255, 255, 255, 0.06);
+        color: #d1d4dc;
+      }
     }
 
     .simple-essentials-card,
@@ -6762,7 +7461,7 @@ body.dark {
 
     /* AI filter box */
     .ai-filter-box {
-      background: #1a1e28;
+      background: #1c1c1c;
       border-color: rgba(255, 255, 255, 0.1);
 
       .ai-filter-title {
@@ -6792,13 +7491,13 @@ body.dark {
 
     /* indicator description */
     .indicator-description {
-      background: #1a1e28;
+      background: #1c1c1c;
       color: rgba(255, 255, 255, 0.65);
     }
 
     /* indicator params */
     .indicator-params-form {
-      background: #1a1e28;
+      background: #1c1c1c;
       border-color: rgba(255, 255, 255, 0.1);
 
       .param-label {
@@ -6810,7 +7509,7 @@ body.dark {
     .strategy-type-selector {
       .strategy-type-card {
         border-color: rgba(255, 255, 255, 0.1);
-        background: #1a1e28;
+        background: #1c1c1c;
         color: #d1d4dc;
 
         &:hover {
@@ -6837,14 +7536,76 @@ body.dark {
         color: rgba(255, 255, 255, 0.75);
       }
     }
+
+    /* indicator dropdown options */
+    .indicator-option .indicator-name {
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .indicator-option-desc {
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .ant-select-selection-selected-value {
+      color: #d1d4dc !important;
+    }
+
+    /* execution mode cards */
+    .execution-mode-card {
+      background: rgba(255, 255, 255, 0.03);
+      border-color: rgba(255, 255, 255, 0.08);
+
+      &:hover {
+        border-color: rgba(64, 169, 255, 0.3);
+        box-shadow: 0 8px 24px rgba(24, 144, 255, 0.12);
+      }
+
+      &.active {
+        background: linear-gradient(135deg, rgba(24, 144, 255, 0.16) 0%, rgba(24, 144, 255, 0.08) 100%);
+        border-color: #1890ff;
+      }
+
+      &.disabled {
+        background: rgba(255, 255, 255, 0.02);
+      }
+    }
+
+    .execution-mode-card-icon {
+      &.signal {
+        color: #69c0ff;
+        background: rgba(24, 144, 255, 0.15);
+      }
+
+      &.live {
+        color: #ffc069;
+        background: rgba(250, 140, 22, 0.15);
+      }
+    }
+
+    .execution-mode-card-title {
+      color: #e0e6ed;
+    }
+
+    .execution-mode-card-desc {
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .simple-mode-kicker {
+      color: #69c0ff;
+    }
+
+    .simple-mode-hero-desc,
+    .execution-step-hero-desc {
+      color: rgba(255, 255, 255, 0.72);
+    }
   }
 
   /* --- Modal header/footer --- */
   .ant-modal-wrap .ant-modal-content {
-    background: #1e222d;
+    background: #1e1e1e;
 
     .ant-modal-header {
-      background: #252a36;
+      background: #252525;
       border-bottom-color: rgba(255, 255, 255, 0.06);
 
       .ant-modal-title {
@@ -6862,13 +7623,13 @@ body.dark {
 
     .ant-modal-footer {
       border-top-color: rgba(255, 255, 255, 0.06);
-      background: #252a36;
+      background: #252525;
     }
   }
 
   /* --- Select dropdown (teleports to body) --- */
   .ant-select-dropdown {
-    background: #1e222d;
+    background: #1e1e1e;
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 
@@ -6884,6 +7645,49 @@ body.dark {
         background: rgba(24, 144, 255, 0.15);
         color: #1890ff;
       }
+
+      &-disabled {
+        color: rgba(255, 255, 255, 0.25);
+      }
+    }
+
+    .ant-select-search__field {
+      background: #141414;
+      border-color: rgba(255, 255, 255, 0.12);
+      color: #d1d4dc;
+    }
+
+    .ant-select-dropdown-menu {
+      background: #1e1e1e;
+    }
+
+    .ant-empty-description {
+      color: rgba(255, 255, 255, 0.35);
+    }
+  }
+
+  /* --- Collapse panels (Step 2 params) --- */
+  .ant-modal-wrap .ant-collapse {
+    background: #1c1c1c !important;
+    border-color: rgba(255, 255, 255, 0.08);
+
+    .ant-collapse-item {
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .ant-collapse-header {
+      color: rgba(255, 255, 255, 0.85) !important;
+      background: rgba(255, 255, 255, 0.03);
+
+      .anticon {
+        color: rgba(255, 255, 255, 0.45);
+      }
+    }
+
+    .ant-collapse-content {
+      background: #1c1c1c;
+      border-color: rgba(255, 255, 255, 0.06);
+      color: #d1d4dc;
     }
   }
 

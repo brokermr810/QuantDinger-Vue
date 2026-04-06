@@ -146,7 +146,7 @@
       </div>
     </div>
 
-    <div v-if="showSetupGuide" class="setup-guide-card">
+    <div v-if="showSetupGuide && !hideSetupGuide" class="setup-guide-card">
       <div class="setup-guide-copy">
         <div class="setup-guide-title">{{ $t('dashboard.setupGuide.title') }}</div>
         <div class="setup-guide-desc">{{ $t('dashboard.setupGuide.desc') }}</div>
@@ -519,6 +519,12 @@ import { mapState } from 'vuex'
 
 export default {
   name: 'Dashboard',
+  props: {
+    hideSetupGuide: {
+      type: Boolean,
+      default: false
+    }
+  },
   data () {
     return {
       summary: {

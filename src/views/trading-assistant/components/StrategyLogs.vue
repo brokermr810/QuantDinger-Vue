@@ -1,5 +1,5 @@
 <template>
-  <div class="strategy-logs" :class="{ 'theme-dark': isDark }">
+  <div class="strategy-logs strategy-tab-pane-inner" :class="{ 'theme-dark': isDark }">
     <div class="logs-toolbar">
       <div class="toolbar-left">
         <a-radio-group v-model="filterLevel" size="small" button-style="solid">
@@ -247,7 +247,7 @@ export default {
     }
 
     /deep/ .ant-radio-group .ant-radio-button-wrapper {
-      background: #1a1e28;
+      background: #1c1c1c;
       border-color: rgba(255, 255, 255, 0.12);
       color: rgba(255, 255, 255, 0.55);
 
@@ -264,7 +264,7 @@ export default {
   }
 
   .logs-container {
-    background: #141821;
+    background: #141414;
     border-color: rgba(255, 255, 255, 0.08);
   }
 

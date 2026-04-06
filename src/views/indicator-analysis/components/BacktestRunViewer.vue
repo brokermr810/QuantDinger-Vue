@@ -21,6 +21,12 @@
         :message="$t('dashboard.indicator.backtest.savedRunId', { id: run.id })"
       />
 
+      <backtest-execution-assumptions-alert
+        :assumptions="result.executionAssumptions"
+        :strategy-config="run.strategy_config"
+        :timeframe="run.timeframe || ''"
+      />
+
       <!-- Metrics -->
       <div class="metrics-cards">
         <div class="metric-card" :class="{ positive: result.totalReturn > 0, negative: result.totalReturn < 0 }">
@@ -109,9 +115,11 @@
 <script>
 import * as echarts from 'echarts'
 import moment from 'moment'
+import BacktestExecutionAssumptionsAlert from './BacktestExecutionAssumptionsAlert.vue'
 
 export default {
   name: 'BacktestRunViewer',
+  components: { BacktestExecutionAssumptionsAlert },
   props: {
     visible: { type: Boolean, default: false },
     run: { type: Object, default: null },
@@ -417,6 +425,11 @@ export default {
   .ant-alert {
     background: rgba(23, 125, 220, 0.08);
     border-color: rgba(23, 125, 220, 0.24);
+  }
+
+  .ant-alert-warning {
+    background: rgba(250, 173, 20, 0.12);
+    border-color: rgba(250, 173, 20, 0.35);
   }
 
   .ant-alert-message,

@@ -58,7 +58,7 @@
       size="small"
       :pagination="{ pageSize: 15, size: 'small' }"
       rowKey="id"
-      :scroll="{ x: 1000 }"
+      :scroll="{ x: 1120 }"
       :rowSelection="{ selectedRowKeys: selectedRowKeys, onChange: onRowSelectionChange }"
     >
       <template slot="symbol" slot-scope="text, record">
@@ -73,6 +73,14 @@
           {{ text >= 0 ? '+' : '' }}{{ Number(text).toFixed(2) }}%
         </span>
         <span v-else>-</span>
+      </template>
+      <template slot="fillTiming" slot-scope="text, record">
+        <a-tag v-if="fillTimingKind(record) === 'same'" size="small" color="orange">
+          {{ $t('dashboard.indicator.backtest.historyFillTimingSame') }}
+        </a-tag>
+        <a-tag v-else size="small" color="blue">
+          {{ $t('dashboard.indicator.backtest.historyFillTimingNext') }}
+        </a-tag>
       </template>
       <template slot="createdAt" slot-scope="text">
         <span>{{ formatLocalDateTime(text) }}</span>
@@ -239,12 +247,21 @@ export default {
       clearTimeout(this.debounceTimer)
       this.debounceTimer = setTimeout(() => this.loadRuns(), 400)
     },
+    fillTimingKind (record) {
+      const cfg = (record && record.strategy_config) || {}
+      const raw = (cfg.execution || {}).signalTiming
+      if (raw == null || String(raw).trim() === '') return 'next'
+      const r = String(raw).toLowerCase()
+      if (r === 'same_bar_close' || r === 'current_bar_close' || r === 'bar_close' || r === 'close') return 'same'
+      return 'next'
+    },
     initColumns () {
       const columns = [
         { title: '#', dataIndex: 'id', key: 'id', width: 60 },
         ...(this.isStrategyHistory ? [{ title: this.$t('backtest-center.strategy.selectStrategy') || 'Strategy', dataIndex: 'strategy_name', key: 'strategy_name', width: 180 }] : []),
         { title: this.$t('dashboard.indicator.backtest.historySymbol') || 'Symbol', key: 'symbol', width: 150, scopedSlots: { customRender: 'symbol' } },
         { title: this.$t('dashboard.indicator.backtest.timeframe') || 'TF', dataIndex: 'timeframe', key: 'timeframe', width: 70 },
+        { title: this.$t('dashboard.indicator.backtest.historyFillTimingCol'), key: 'fillTiming', width: 96, scopedSlots: { customRender: 'fillTiming' } },
         { title: this.$t('dashboard.indicator.backtest.historyRange'), key: 'range', width: 180, scopedSlots: { customRender: 'range' } },
         { title: this.$t('dashboard.indicator.backtest.tradeDirection'), dataIndex: 'trade_direction', key: 'trade_direction', width: 80 },
         { title: this.$t('dashboard.indicator.backtest.leverage'), dataIndex: 'leverage', key: 'leverage', width: 60 },
@@ -651,8 +668,27 @@ export default {
     color: rgba(255, 255, 255, 0.85);
   }
 
-  .drawer-toolbar .selected-tip {
-    color: rgba(255, 255, 255, 0.45);
+  .drawer-toolbar {
+    .selected-tip {
+      color: rgba(255, 255, 255, 0.55);
+    }
+
+    .ant-btn-primary.ant-btn-background-ghost {
+      color: #69c0ff;
+      border-color: #177ddc;
+
+      &:hover:not(:disabled),
+      &:focus:not(:disabled) {
+        color: #91d5ff;
+        border-color: #3c9ae8;
+      }
+
+      &:disabled {
+        color: rgba(255, 255, 255, 0.25);
+        border-color: #434343;
+        background: transparent;
+      }
+    }
   }
 
   .ant-input,
@@ -690,6 +726,10 @@ export default {
     background: rgba(255, 255, 255, 0.04);
   }
 
+  .ant-pagination-total-text {
+    color: rgba(255, 255, 255, 0.65);
+  }
+
   .ant-pagination-item {
     background: #1f1f1f;
     border-color: #434343;
@@ -705,6 +745,16 @@ export default {
 
   .ant-empty-description {
     color: rgba(255, 255, 255, 0.45);
+  }
+
+  .ant-alert-warning {
+    background: rgba(250, 173, 20, 0.12);
+    border-color: rgba(250, 173, 20, 0.35);
+  }
+
+  .ant-alert-warning .ant-alert-message,
+  .ant-alert-warning .ant-alert-description {
+    color: rgba(255, 255, 255, 0.82);
   }
 }
 

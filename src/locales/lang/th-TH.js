@@ -1195,6 +1195,8 @@ const locale = {
   'trading-assistant.indicatorType.volatility': 'ความผันผวน',
   'trading-assistant.indicatorType.volume': 'ปริมาณ',
   'trading-assistant.indicatorType.custom': 'ปรับแต่ง',
+  'trading-assistant.indicatorType.python': 'Python',
+  'trading-assistant.indicatorType.pine': 'Pine Script',
   'trading-assistant.exchangeNames': {
     'okx': 'โอเคเอ็กซ์',
     'binance': 'ไบแนนซ์',

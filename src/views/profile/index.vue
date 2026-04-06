@@ -562,228 +562,10 @@
       </a-col>
     </a-row>
 
-    <!-- Add Exchange Account Modal（挂载到 body，暗黑样式用 wrap-class-name） -->
-    <a-modal
-      :title="$t('profile.exchange.addTitle')"
-      :visible="showAddExchangeModal"
-      :wrap-class-name="exchangeModalWrapClass"
-      :confirmLoading="savingExchange"
-      @ok="handleSaveExchange"
-      @cancel="showAddExchangeModal = false"
-      :okText="$t('common.save')"
-      :cancelText="$t('common.cancel')"
-      :maskClosable="false"
-      width="520px"
-    >
-      <a-form :form="exchangeForm" layout="vertical" class="exchange-account-form">
-        <!-- Exchange Type -->
-        <a-form-item :label="$t('profile.exchange.selectExchange')">
-          <a-select
-            v-decorator="['exchange_id', { rules: [{ required: true, message: $t('profile.exchange.selectExchange') }] }]"
-            :placeholder="$t('profile.exchange.selectExchange')"
-            :dropdown-class-name="isDarkTheme ? 'profile-exchange-select-dropdown-dark' : ''"
-            :get-popup-container="getExchangeSelectPopupContainer"
-            @change="handleExchangeTypeChange"
-          >
-            <a-select-opt-group :label="$t('profile.exchange.typeCrypto')">
-              <a-select-option v-for="ex in cryptoExchangeList" :key="ex.id" :value="ex.id">
-                {{ ex.name }}
-              </a-select-option>
-            </a-select-opt-group>
-            <a-select-opt-group :label="$t('profile.exchange.typeIBKR')">
-              <a-select-option value="ibkr">Interactive Brokers (IBKR)</a-select-option>
-            </a-select-opt-group>
-            <a-select-opt-group :label="$t('profile.exchange.typeMT5')">
-              <a-select-option value="mt5">MetaTrader 5</a-select-option>
-            </a-select-opt-group>
-          </a-select>
-        </a-form-item>
-
-        <!-- Account Name (optional) -->
-        <a-form-item :label="$t('profile.exchange.accountName')">
-          <a-input
-            v-decorator="['name']"
-            :placeholder="$t('profile.exchange.accountNamePlaceholder')"
-          />
-        </a-form-item>
-
-        <!-- 后端出网 IP：交易所 API 白名单应填此地址（非本机浏览器 IP） -->
-        <a-form-item v-if="addExchangeType === 'crypto'" :label="$t('profile.exchange.whitelistIpLabel')">
-          <div class="egress-ip-block">
-            <a-spin v-if="egressIpLoading" size="small" />
-            <template v-else>
-              <div class="egress-ip-line">
-                <span class="egress-ip-kind">{{ $t('profile.exchange.whitelistIpv4') }}</span>
-                <code class="egress-ip-value">{{ egressServerIpv4 || '—' }}</code>
-                <a-button type="link" size="small" class="egress-ip-action" @click="copyEgressIp('v4')" :disabled="!egressServerIpv4">
-                  {{ $t('profile.exchange.whitelistIpCopy') }}
-                </a-button>
-              </div>
-              <div class="egress-ip-line">
-                <span class="egress-ip-kind">{{ $t('profile.exchange.whitelistIpv6') }}</span>
-                <code class="egress-ip-value">{{ egressServerIpv6 || '—' }}</code>
-                <a-button type="link" size="small" class="egress-ip-action" @click="copyEgressIp('v6')" :disabled="!egressServerIpv6">
-                  {{ $t('profile.exchange.whitelistIpCopy') }}
-                </a-button>
-              </div>
-              <div class="egress-ip-row egress-ip-refresh-row">
-                <a-button type="link" size="small" class="egress-ip-action" @click="fetchEgressIp">
-                  {{ $t('profile.exchange.whitelistIpRefresh') }}
-                </a-button>
-              </div>
-            </template>
-          </div>
-          <div class="field-hint egress-ip-hint">{{ $t('profile.exchange.whitelistIpHint') }}</div>
-        </a-form-item>
-
-        <!-- Crypto fields -->
-        <template v-if="addExchangeType === 'crypto'">
-          <div v-if="selectedExchangeApiDocUrl" class="exchange-api-doc-callout">
-            <div class="exchange-api-doc-callout__content">
-              <div class="exchange-api-doc-callout__icon">
-                <a-icon type="link" />
-              </div>
-              <div class="exchange-api-doc-callout__text">
-                <div class="exchange-api-doc-callout__title">
-                  {{ selectedCryptoExchangeName }} {{ $t('profile.exchange.apiDocTitleSuffix') }}
-                </div>
-                <div class="exchange-api-doc-callout__hint">
-                  {{ $t('profile.exchange.apiDocHint') }}
-                </div>
-              </div>
-            </div>
-            <a-button type="link" size="small" class="exchange-api-doc-callout__action" @click="openSelectedExchangeApiDoc">
-              {{ $t('profile.exchange.apiDocAction') }}
-              <a-icon type="arrow-right" />
-            </a-button>
-          </div>
-          <a-form-item :label="$t('profile.exchange.apiKey')">
-            <a-input-password
-              v-decorator="['api_key', { rules: [{ required: true, message: 'API Key is required' }] }]"
-              placeholder="API Key"
-              autocomplete="new-password"
-            />
-          </a-form-item>
-          <a-form-item :label="$t('profile.exchange.secretKey')">
-            <a-input-password
-              v-decorator="['secret_key', { rules: [{ required: true, message: 'Secret Key is required' }] }]"
-              placeholder="Secret Key"
-              autocomplete="new-password"
-            />
-          </a-form-item>
-          <a-form-item v-if="addExchangeNeedsPassphrase" :label="$t('profile.exchange.passphrase')">
-            <a-input-password
-              v-decorator="['passphrase']"
-              placeholder="Passphrase"
-              autocomplete="new-password"
-            />
-          </a-form-item>
-          <a-form-item v-if="addExchangeShowDemo">
-            <a-checkbox v-decorator="['enable_demo_trading', { valuePropName: 'checked', initialValue: false }]" class="exchange-demo-checkbox">
-              <span class="exchange-demo-checkbox-label">{{ $t('profile.exchange.demoTrading') }}</span>
-            </a-checkbox>
-            <div class="field-hint exchange-demo-hint">{{ $t('profile.exchange.demoTradingHint') }}</div>
-          </a-form-item>
-        </template>
-
-        <!-- IBKR fields -->
-        <template v-if="addExchangeType === 'ibkr'">
-          <a-alert
-            type="warning"
-            showIcon
-            style="margin-bottom: 16px"
-            :message="$t('profile.exchange.localDeploymentRequired')"
-            :description="$t('profile.exchange.localDeploymentHint')"
-          />
-          <a-form-item :label="$t('profile.exchange.ibkrHost')">
-            <a-input
-              v-decorator="['ibkr_host', { initialValue: '127.0.0.1' }]"
-              placeholder="127.0.0.1"
-            />
-          </a-form-item>
-          <a-form-item :label="$t('profile.exchange.ibkrPort')">
-            <a-input-number
-              v-decorator="['ibkr_port', { initialValue: 7497 }]"
-              :min="1"
-              :max="65535"
-              style="width: 100%"
-            />
-            <div class="field-hint">
-              <a-icon type="info-circle" />
-              <span>{{ $t('profile.exchange.ibkrPortHint') }}</span>
-            </div>
-          </a-form-item>
-          <a-form-item :label="$t('profile.exchange.ibkrClientId')">
-            <a-input-number
-              v-decorator="['ibkr_client_id', { initialValue: 1 }]"
-              :min="1"
-              :max="999"
-              style="width: 100%"
-            />
-          </a-form-item>
-          <a-form-item :label="$t('profile.exchange.ibkrAccount')">
-            <a-input
-              v-decorator="['ibkr_account']"
-              placeholder="DU123456"
-            />
-          </a-form-item>
-        </template>
-
-        <!-- MT5 fields -->
-        <template v-if="addExchangeType === 'mt5'">
-          <a-alert
-            type="warning"
-            showIcon
-            style="margin-bottom: 16px"
-            :message="$t('profile.exchange.localDeploymentRequired')"
-            :description="$t('profile.exchange.localDeploymentHint')"
-          />
-          <a-form-item :label="$t('profile.exchange.mt5Server')">
-            <a-input
-              v-decorator="['mt5_server', { rules: [{ required: true, message: 'Server is required' }] }]"
-              placeholder="MetaQuotes-Demo"
-            />
-          </a-form-item>
-          <a-form-item :label="$t('profile.exchange.mt5Login')">
-            <a-input-number
-              v-decorator="['mt5_login', { rules: [{ required: true, message: 'Login is required' }] }]"
-              :min="1"
-              style="width: 100%"
-              placeholder="12345678"
-            />
-          </a-form-item>
-          <a-form-item :label="$t('profile.exchange.mt5Password')">
-            <a-input-password
-              v-decorator="['mt5_password', { rules: [{ required: true, message: 'Password is required' }] }]"
-              placeholder="Password"
-              autocomplete="new-password"
-            />
-          </a-form-item>
-          <a-form-item :label="$t('profile.exchange.mt5TerminalPath')">
-            <a-input
-              v-decorator="['mt5_terminal_path']"
-              placeholder="C:\Program Files\MetaTrader 5\terminal64.exe"
-            />
-            <div class="field-hint">
-              <a-icon type="info-circle" />
-              <span>{{ $t('profile.exchange.mt5TerminalPathHint') }}</span>
-            </div>
-          </a-form-item>
-        </template>
-
-        <!-- Test Connection -->
-        <a-form-item v-if="addExchangeType">
-          <a-button block :loading="testingExchange" @click="handleTestExchangeConnection">
-            <a-icon type="api" />
-            {{ $t('profile.exchange.testConnection') }}
-          </a-button>
-          <div v-if="exchangeTestResult" class="test-result-msg" :class="exchangeTestResult.success ? 'success' : 'error'">
-            <a-icon :type="exchangeTestResult.success ? 'check-circle' : 'close-circle'" />
-            {{ exchangeTestResult.message }}
-          </div>
-        </a-form-item>
-      </a-form>
-    </a-modal>
+    <exchange-account-modal
+      :visible.sync="showAddExchangeModal"
+      @success="loadExchangeCredentials"
+    />
 
     <a-modal
       :title="$t('profile.exchange.openAccountTitle')"
@@ -829,12 +611,13 @@
 <script>
 import { getProfile, updateProfile, getMyCreditsLog, getMyReferrals, getNotificationSettings, updateNotificationSettings, testNotificationSettings } from '@/api/user'
 import { getSettingsValues } from '@/api/settings'
-import { listExchangeCredentials, createExchangeCredential, deleteExchangeCredential, getCredentialsEgressIp } from '@/api/credentials'
-import { testExchangeConnection } from '@/api/strategy'
+import { listExchangeCredentials, deleteExchangeCredential } from '@/api/credentials'
 import { baseMixin } from '@/store/app-mixin'
+import ExchangeAccountModal from '@/components/ExchangeAccountModal/ExchangeAccountModal.vue'
 
 export default {
   name: 'Profile',
+  components: { ExchangeAccountModal },
   mixins: [baseMixin],
   data () {
     return {
@@ -926,27 +709,6 @@ export default {
       exchangeLoading: false,
       showAddExchangeModal: false,
       showExchangeSignupModal: false,
-      savingExchange: false,
-      testingExchange: false,
-      exchangeTestResult: null,
-      addExchangeType: '', // 'crypto' | 'ibkr' | 'mt5'
-      selectedExchangeId: '',
-      egressServerIpv4: '',
-      egressServerIpv6: '',
-      egressIpLoading: false,
-      cryptoExchangeList: [
-        { id: 'binance', name: 'Binance', docsUrl: 'https://www.binance.com/en/support/faq/detail/360002502072' },
-        { id: 'okx', name: 'OKX', docsUrl: 'https://www.okx.com/docs-v5/zh/#overview-v5-api-key-creation' },
-        { id: 'bitget', name: 'Bitget', docsUrl: 'https://www.bitget.com/api-doc/common/quick-start' },
-        { id: 'bybit', name: 'Bybit', docsUrl: 'https://www.bybit.com/en/help-center/article/How-to-create-your-API-key/' },
-        { id: 'coinbaseexchange', name: 'Coinbase', docsUrl: 'https://docs.cdp.coinbase.com/exchange/rest-api/authentication' },
-        { id: 'kraken', name: 'Kraken', docsUrl: 'https://support.kraken.com/articles/360000919966-how-to-create-an-api-key' },
-        { id: 'kucoin', name: 'KuCoin', docsUrl: 'https://www.kucoin.com/docs-new/authentication' },
-        { id: 'gate', name: 'Gate.io', docsUrl: 'https://www.gate.com/docs/developers/apiv4/' },
-        { id: 'bitfinex', name: 'Bitfinex', docsUrl: 'https://docs.bitfinex.com/docs/create-an-api-key' },
-        { id: 'deepcoin', name: 'Deepcoin', docsUrl: 'https://www.deepcoin.com/docs/authentication' },
-        { id: 'htx', name: 'HTX', docsUrl: 'https://www.htx.com/en-us/opend/newApiPages/?id=414' }
-      ],
       exchangeSignupCards: [
         {
           id: 'binance',
@@ -1095,30 +857,9 @@ export default {
           scopedSlots: { customRender: 'action' }
         }
       ]
-    },
-    addExchangeNeedsPassphrase () {
-      const needs = ['okx', 'bitget', 'kucoin']
-      return needs.includes(this.selectedExchangeId)
-    },
-    addExchangeShowDemo () {
-      return this.addExchangeType === 'crypto' && !!this.selectedExchangeId
-    },
-    selectedCryptoExchangeMeta () {
-      return this.cryptoExchangeList.find(item => item.id === this.selectedExchangeId) || null
-    },
-    selectedCryptoExchangeName () {
-      return this.selectedCryptoExchangeMeta ? this.selectedCryptoExchangeMeta.name : this.getExchangeDisplayName(this.selectedExchangeId)
-    },
-    selectedExchangeApiDocUrl () {
-      return this.selectedCryptoExchangeMeta ? this.selectedCryptoExchangeMeta.docsUrl : ''
     }
   },
   watch: {
-    showAddExchangeModal (open) {
-      if (open) {
-        this.fetchEgressIp()
-      }
-    },
     activeTab (val) {
       if (val === 'credits' && this.creditsLog.length === 0) {
         this.loadCreditsLog()
@@ -1138,7 +879,6 @@ export default {
     this.profileForm = this.$form.createForm(this, { name: 'profile' })
     this.passwordForm = this.$form.createForm(this, { name: 'password' })
     this.notificationForm = this.$form.createForm(this, { name: 'notification' })
-    this.exchangeForm = this.$form.createForm(this, { name: 'exchange' })
   },
   mounted () {
     this.loadProfile()
@@ -1521,10 +1261,6 @@ export default {
       }
     },
 
-    getExchangeSelectPopupContainer () {
-      return document.body
-    },
-
     openAddExchangeModal () {
       this.showAddExchangeModal = true
     },
@@ -1540,80 +1276,6 @@ export default {
 
     openExchangeSignupLink (url) {
       this.openExternalLink(url)
-    },
-
-    openSelectedExchangeApiDoc () {
-      this.openExternalLink(this.selectedExchangeApiDocUrl)
-    },
-
-    async fetchEgressIp () {
-      this.egressIpLoading = true
-      this.egressServerIpv4 = ''
-      this.egressServerIpv6 = ''
-      try {
-        const res = await getCredentialsEgressIp()
-        if (res.code === 1 && res.data) {
-          const v4 = res.data.ipv4 != null ? String(res.data.ipv4).trim() : ''
-          const v6 = res.data.ipv6 != null ? String(res.data.ipv6).trim() : ''
-          this.egressServerIpv4 = v4
-          this.egressServerIpv6 = v6
-          if (!v4 && !v6 && res.data.ip) {
-            const legacy = String(res.data.ip).trim()
-            if (legacy.includes(':')) {
-              this.egressServerIpv6 = legacy
-            } else {
-              this.egressServerIpv4 = legacy
-            }
-          }
-        }
-      } catch (e) {
-        this.egressServerIpv4 = ''
-        this.egressServerIpv6 = ''
-      } finally {
-        this.egressIpLoading = false
-      }
-    },
-
-    copyEgressIp (kind) {
-      const ip = kind === 'v6' ? this.egressServerIpv6 : this.egressServerIpv4
-      if (!ip) return
-      const ok = () => this.$message.success(this.$t('profile.exchange.whitelistIpCopied'))
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(ip).then(ok).catch(() => this._fallbackCopyText(ip, ok))
-      } else {
-        this._fallbackCopyText(ip, ok)
-      }
-    },
-
-    _fallbackCopyText (text, onOk) {
-      try {
-        const ta = document.createElement('textarea')
-        ta.value = text
-        ta.style.position = 'fixed'
-        ta.style.left = '-9999px'
-        document.body.appendChild(ta)
-        ta.select()
-        document.execCommand('copy')
-        document.body.removeChild(ta)
-        if (onOk) onOk()
-      } catch (e) {
-        this.$message.error(this.$t('profile.exchange.whitelistIpCopyFail'))
-      }
-    },
-
-    handleExchangeTypeChange (val) {
-      this.selectedExchangeId = val
-      this.exchangeTestResult = null
-      const cryptoIds = this.cryptoExchangeList.map(e => e.id)
-      if (cryptoIds.includes(val)) {
-        this.addExchangeType = 'crypto'
-      } else if (val === 'ibkr') {
-        this.addExchangeType = 'ibkr'
-      } else if (val === 'mt5') {
-        this.addExchangeType = 'mt5'
-      } else {
-        this.addExchangeType = ''
-      }
     },
 
     getExchangeDisplayName (id) {
@@ -1635,32 +1297,6 @@ export default {
       return names[id] || id
     },
 
-    handleSaveExchange () {
-      this.exchangeForm.validateFields(async (err, values) => {
-        if (err) return
-        this.savingExchange = true
-        try {
-          const payload = { ...values }
-          const res = await createExchangeCredential(payload)
-          if (res.code === 1) {
-            this.$message.success(this.$t('profile.exchange.saveSuccess'))
-            this.showAddExchangeModal = false
-            this.exchangeForm.resetFields()
-            this.addExchangeType = ''
-            this.selectedExchangeId = ''
-            this.exchangeTestResult = null
-            this.loadExchangeCredentials()
-          } else {
-            this.$message.error(res.msg || this.$t('profile.exchange.saveFailed'))
-          }
-        } catch (e) {
-          this.$message.error(e.message || this.$t('profile.exchange.saveFailed'))
-        } finally {
-          this.savingExchange = false
-        }
-      })
-    },
-
     async handleDeleteCredential (id) {
       try {
         const res = await deleteExchangeCredential(id)
@@ -1672,37 +1308,6 @@ export default {
         }
       } catch (e) {
         this.$message.error('Delete failed')
-      }
-    },
-
-    async handleTestExchangeConnection () {
-      const values = this.exchangeForm.getFieldsValue()
-      const exchangeId = values.exchange_id
-      if (!exchangeId) return
-
-      this.testingExchange = true
-      this.exchangeTestResult = null
-      try {
-        const payload = { ...values }
-        const res = await testExchangeConnection(payload)
-        if (res.code === 1) {
-          this.exchangeTestResult = {
-            success: true,
-            message: this.$t('profile.exchange.testSuccess')
-          }
-        } else {
-          this.exchangeTestResult = {
-            success: false,
-            message: `${this.$t('profile.exchange.testFailed')}: ${res.msg || 'Unknown error'}`
-          }
-        }
-      } catch (e) {
-        this.exchangeTestResult = {
-          success: false,
-          message: `${this.$t('profile.exchange.testFailed')}: ${e.message || 'Network error'}`
-        }
-      } finally {
-        this.testingExchange = false
       }
     },
 
@@ -3074,345 +2679,10 @@ export default {
 </style>
 
 <style lang="less">
-/* 交易所添加弹窗挂载在 body 外，需非 scoped；与 profile 页暗黑主题同步 */
+/* 交易所弹窗样式已迁至 ExchangeAccountModal.vue（全局），此处保留开户引导弹窗 */
 @exchange-dark-bg: #1c1c1c;
 @exchange-dark-border: #2a2a2a;
-@exchange-dark-input: #141414;
-@exchange-dark-text: #c9d1d9;
-@exchange-dark-muted: #8b949e;
 @exchange-dark-title: #e0e6ed;
-
-.profile-exchange-modal .exchange-account-form {
-  .egress-ip-block {
-    width: 100%;
-  }
-
-  .exchange-api-doc-callout {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin: 0 0 16px;
-    padding: 12px 14px;
-    border: 1px solid rgba(24, 144, 255, 0.18);
-    border-radius: 10px;
-    background: linear-gradient(90deg, rgba(24, 144, 255, 0.06) 0%, rgba(82, 196, 26, 0.04) 100%);
-  }
-
-  .exchange-api-doc-callout__content {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    min-width: 0;
-  }
-
-  .exchange-api-doc-callout__icon {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(24, 144, 255, 0.12);
-    color: #1890ff;
-    flex: 0 0 auto;
-  }
-
-  .exchange-api-doc-callout__text {
-    min-width: 0;
-  }
-
-  .exchange-api-doc-callout__title {
-    color: rgba(0, 0, 0, 0.85);
-    font-size: 13px;
-    font-weight: 600;
-    line-height: 1.5;
-  }
-
-  .exchange-api-doc-callout__hint {
-    color: rgba(0, 0, 0, 0.55);
-    font-size: 12px;
-    line-height: 1.5;
-    margin-top: 2px;
-  }
-
-  .exchange-api-doc-callout__action {
-    padding: 0;
-    white-space: nowrap;
-    flex: 0 0 auto;
-  }
-
-  .egress-ip-row {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .egress-ip-refresh-row {
-    margin-top: 4px;
-  }
-
-  .egress-ip-line {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 10px;
-  }
-
-  .egress-ip-kind {
-    flex: 0 0 auto;
-    min-width: 42px;
-    font-size: 12px;
-    color: rgba(0, 0, 0, 0.55);
-  }
-
-  .egress-ip-value {
-    flex: 1 1 160px;
-    min-width: 0;
-    font-family: Consolas, ui-monospace, monospace;
-    font-size: 12px;
-    padding: 6px 10px;
-    border-radius: 4px;
-    border: 1px solid #d9d9d9;
-    background: #fafafa;
-    color: #262626;
-    word-break: break-all;
-  }
-
-  .exchange-demo-checkbox-label {
-    color: rgba(0, 0, 0, 0.85);
-  }
-
-  .exchange-demo-hint {
-    margin-top: 6px;
-  }
-}
-
-.profile-exchange-modal--dark {
-  .ant-modal-content {
-    background: @exchange-dark-bg;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
-  }
-
-  .ant-modal-header {
-    background: @exchange-dark-bg;
-    border-bottom: 1px solid @exchange-dark-border;
-  }
-
-  .ant-modal-title {
-    color: @exchange-dark-title;
-  }
-
-  .ant-modal-close {
-    color: @exchange-dark-muted;
-
-    &:hover {
-      color: @exchange-dark-text;
-    }
-  }
-
-  .ant-modal-body {
-    color: @exchange-dark-text;
-  }
-
-  .ant-modal-footer {
-    background: @exchange-dark-bg;
-    border-top: 1px solid @exchange-dark-border;
-  }
-
-  .exchange-account-form {
-    .ant-form-item-label > label {
-      color: @exchange-dark-text;
-    }
-
-    .ant-form-item-explain,
-    .ant-form-item-extra {
-      color: @exchange-dark-muted;
-    }
-
-    .ant-input,
-    .ant-input-password .ant-input,
-    .ant-input-number,
-    .ant-input-number-input {
-      background: @exchange-dark-input !important;
-      border-color: @exchange-dark-border !important;
-      color: @exchange-dark-text !important;
-    }
-
-    .ant-input-password-icon {
-      color: @exchange-dark-muted;
-    }
-
-    .ant-input-number-handler-wrap {
-      background: @exchange-dark-input;
-      border-left-color: @exchange-dark-border;
-    }
-
-    .ant-input-number-handler-down-inner,
-    .ant-input-number-handler-up-inner {
-      color: @exchange-dark-muted;
-    }
-
-    .ant-select-selector {
-      background: @exchange-dark-input !important;
-      border-color: @exchange-dark-border !important;
-      color: @exchange-dark-text !important;
-    }
-
-    .ant-select-selection-item,
-    .ant-select-selection-placeholder {
-      color: @exchange-dark-text !important;
-    }
-
-    /* ant-design-vue 1.x 闭合态下拉里选中文案 */
-    .ant-select-selection,
-    .ant-select-selection--single {
-      background: @exchange-dark-input !important;
-      border-color: @exchange-dark-border !important;
-    }
-
-    .ant-select-selection__rendered,
-    .ant-select-selection-selected-value,
-    .ant-select-selection-placeholder {
-      color: @exchange-dark-text !important;
-    }
-
-    .ant-select-arrow {
-      color: @exchange-dark-muted;
-    }
-
-    .ant-checkbox-wrapper {
-      color: @exchange-dark-text;
-
-      span {
-        color: @exchange-dark-text;
-      }
-    }
-
-    .exchange-demo-checkbox-label {
-      color: @exchange-dark-text !important;
-    }
-
-    .exchange-demo-hint,
-    .egress-ip-hint {
-      color: @exchange-dark-muted !important;
-    }
-
-    .exchange-api-doc-callout {
-      background: linear-gradient(90deg, rgba(24, 144, 255, 0.12) 0%, rgba(82, 196, 26, 0.08) 100%);
-      border-color: rgba(88, 166, 255, 0.26);
-    }
-
-    .exchange-api-doc-callout__icon {
-      background: rgba(88, 166, 255, 0.16);
-      color: #58a6ff;
-    }
-
-    .exchange-api-doc-callout__title {
-      color: @exchange-dark-title;
-    }
-
-    .exchange-api-doc-callout__hint {
-      color: @exchange-dark-muted;
-    }
-
-    .exchange-api-doc-callout__action {
-      color: #58a6ff;
-    }
-
-    .egress-ip-value {
-      border-color: @exchange-dark-border !important;
-      background: @exchange-dark-input !important;
-      color: @exchange-dark-title !important;
-    }
-
-    a.egress-ip-action {
-      color: #58a6ff;
-    }
-
-    .egress-ip-kind {
-      color: @exchange-dark-muted !important;
-    }
-
-    .ant-alert {
-      background: rgba(250, 173, 20, 0.12);
-      border-color: rgba(250, 173, 20, 0.45);
-    }
-
-    .ant-alert-message {
-      color: #ffc53d;
-    }
-
-    .ant-alert-description {
-      color: @exchange-dark-muted;
-    }
-
-    .ant-alert-icon {
-      color: #faad14;
-    }
-
-    .field-hint {
-      color: @exchange-dark-muted;
-      margin-top: 6px;
-      font-size: 12px;
-      display: flex;
-      align-items: flex-start;
-      gap: 6px;
-
-      .anticon {
-        color: @exchange-dark-muted;
-        margin-top: 2px;
-      }
-    }
-
-    .test-result-msg {
-      color: @exchange-dark-text;
-
-      &.success {
-        color: #73d13d;
-      }
-
-      &.error {
-        color: #ff7875;
-      }
-    }
-  }
-}
-
-/* 交易所下拉（暗黑） */
-.profile-exchange-select-dropdown-dark.ant-select-dropdown {
-  background: @exchange-dark-bg;
-
-  .ant-select-dropdown-menu-item {
-    color: @exchange-dark-text;
-  }
-
-  .ant-select-dropdown-menu-item:hover {
-    background: #2a2a2a;
-  }
-
-  .ant-select-dropdown-menu-item-selected {
-    background: #2a2a2a !important;
-    color: @exchange-dark-title;
-    font-weight: 500;
-  }
-
-  .ant-select-dropdown-menu-item-group-title {
-    color: @exchange-dark-muted !important;
-    font-size: 12px;
-  }
-
-  .ant-select-dropdown-menu-item,
-  .ant-select-dropdown-menu-item-selected {
-    color: @exchange-dark-text !important;
-  }
-
-  .ant-empty-description {
-    color: @exchange-dark-muted;
-  }
-}
 
 .exchange-signup-modal {
   .exchange-signup-promo {

@@ -1198,6 +1198,8 @@ const locale = {
   'trading-assistant.indicatorType.volatility': '변동',
   'trading-assistant.indicatorType.volume': '볼륨',
   'trading-assistant.indicatorType.custom': '사용자 정의',
+  'trading-assistant.indicatorType.python': 'Python',
+  'trading-assistant.indicatorType.pine': 'Pine Script',
   'trading-assistant.exchangeNames': {
     'okx': 'OKX',
     'binance': '바이낸스',

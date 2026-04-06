@@ -30,8 +30,8 @@
       </a-col>
 
       <a-col :xs="24" :md="8" class="side-col">
-        <a-tabs v-model="activeTab" size="small" class="side-tabs">
-          <a-tab-pane key="templates" :tab="$t('trading-assistant.editor.templateTab')">
+        <a-tabs v-model="activeTab" size="small" class="side-tabs" :animated="false">
+          <a-tab-pane key="templates" :tab="$t('trading-assistant.editor.templateTab')" :force-render="true">
             <div class="panel-intro">
               <div class="panel-intro__title">{{ $t('trading-assistant.editor.templateIntroTitle') }}</div>
               <div class="panel-intro__desc">{{ $t('trading-assistant.editor.templateIntroDesc') }}</div>
@@ -57,7 +57,7 @@
             </div>
           </a-tab-pane>
 
-          <a-tab-pane key="params" :tab="$t('trading-assistant.editor.paramsTab')">
+          <a-tab-pane key="params" :tab="$t('trading-assistant.editor.paramsTab')" :force-render="true">
             <div v-if="selectedTemplate" class="params-panel">
               <div class="panel-intro">
                 <div class="panel-intro__title">
@@ -126,10 +126,17 @@
                 </a-button>
               </div>
             </div>
-            <a-empty v-else :description="$t('trading-assistant.editor.paramsEmpty')" />
+            <div v-else class="params-empty-guide">
+              <a-empty :description="$t('trading-assistant.editor.paramsEmpty')">
+                <a-button type="primary" size="small" ghost @click="activeTab = 'templates'">
+                  <a-icon type="appstore" />
+                  {{ $t('trading-assistant.editor.templateTab') }}
+                </a-button>
+              </a-empty>
+            </div>
           </a-tab-pane>
 
-          <a-tab-pane key="ai" :tab="$t('trading-assistant.editor.aiTab')">
+          <a-tab-pane key="ai" :tab="$t('trading-assistant.editor.aiTab')" :force-render="true">
             <div class="ai-panel">
               <div class="panel-intro">
                 <div class="panel-intro__title">
@@ -153,32 +160,37 @@
                 :rows="10"
                 :auto-size="{ minRows: 8, maxRows: 16 }"
               />
-              <a-button
-                type="primary"
-                block
-                @click="handleAIGenerate"
-                :loading="aiGenerating"
-                size="large"
-                style="margin-top: 10px;"
-              >
-                <a-icon type="thunderbolt" />
-                {{ $t('trading-assistant.editor.aiGenerateBtn') }}
-              </a-button>
-              <div v-if="aiGenerating" class="ai-status">
-                <a-icon type="loading" spin /> {{ $t('trading-assistant.editor.generating') }}
+              <div class="ai-actions">
+                <a-button
+                  type="primary"
+                  block
+                  @click="handleAIAdjustParams"
+                  :loading="aiAdjustingParams"
+                  :disabled="aiGenerating"
+                  size="large"
+                >
+                  <a-icon type="setting" />
+                  {{ $t('trading-assistant.editor.aiAdjustParamsBtn') }}
+                </a-button>
+                <a-button
+                  block
+                  @click="handleAIGenerate"
+                  :loading="aiGenerating"
+                  :disabled="aiAdjustingParams"
+                  size="large"
+                  style="margin-top: 8px;"
+                >
+                  <a-icon type="code" />
+                  {{ $t('trading-assistant.editor.aiGenerateFullCodeBtn') }}
+                </a-button>
+              </div>
+              <div v-if="aiGenerating || aiAdjustingParams" class="ai-status">
+                <a-icon type="loading" spin />
+                {{ aiAdjustingParams ? $t('trading-assistant.editor.aiAdjustingParams') : $t('trading-assistant.editor.generating') }}
               </div>
             </div>
           </a-tab-pane>
 
-          <a-tab-pane key="docs" :tab="$t('trading-assistant.editor.docsTab')">
-            <div class="docs-panel">
-              <div class="panel-intro">
-                <div class="panel-intro__title">{{ $t('trading-assistant.editor.docsIntroTitle') }}</div>
-                <div class="panel-intro__desc">{{ $t('trading-assistant.editor.docsIntroDesc') }}</div>
-              </div>
-              <div class="docs-content" v-html="apiDocsHtml"></div>
-            </div>
-          </a-tab-pane>
         </a-tabs>
       </a-col>
     </a-row>
@@ -203,43 +215,6 @@ import {
   buildTemplateParamValues
 } from './scriptTemplateCatalog'
 
-const API_DOCS_MD = `
-<h4>Strategy API Reference</h4>
-<h5>Lifecycle Functions</h5>
-<pre><code>def on_init(ctx):
-    """Called once when strategy starts"""
-
-def on_bar(ctx, bar):
-    """Called on each new K-line bar"""
-    # bar: { open, high, low, close, volume, timestamp }
-
-def on_order_filled(ctx, order):
-    """Called when an order is filled"""
-
-def on_stop(ctx):
-    """Called when strategy stops"""</code></pre>
-
-<h5>Trading Actions</h5>
-<pre><code>ctx.buy(price, amount)      # Buy / go long
-ctx.sell(price, amount)     # Sell / reduce long / go short
-ctx.close_position()        # Close current position
-ctx.cancel_all_orders()     # Cancel pending orders</code></pre>
-
-<h5>Context Properties</h5>
-<pre><code>ctx.position       # { side, amount, entry_price, unrealized_pnl }
-ctx.balance        # Available balance
-ctx.equity         # Total equity
-ctx.current_price  # Current market price
-ctx.symbol         # Trading symbol
-ctx.timeframe      # K-line timeframe</code></pre>
-
-<h5>Data Access</h5>
-<pre><code>ctx.bars(n=100)            # Get last N bars
-ctx.param(name, default)   # Get strategy parameter
-ctx.indicator(id, params)  # Call existing indicator
-ctx.log(message)           # Write strategy log</code></pre>
-`
-
 export default {
   name: 'StrategyEditor',
   props: {
@@ -254,9 +229,9 @@ export default {
       activeTab: 'templates',
       aiPrompt: '',
       aiGenerating: false,
+      aiAdjustingParams: false,
       verifying: false,
       editor: null,
-      apiDocsHtml: API_DOCS_MD,
       templates: SCRIPT_TEMPLATE_CATALOG,
       selectedTemplateKey: '',
       templateParamValues: {},
@@ -327,7 +302,12 @@ export default {
     },
     visible (val) {
       if (val) {
-        this.scheduleEditorRefresh()
+        this.$nextTick(() => {
+          this.scheduleEditorRefresh()
+          try {
+            window.dispatchEvent(new Event('resize'))
+          } catch (e) {}
+        })
       }
     },
     initialTemplateKey (key) {
@@ -539,6 +519,100 @@ def on_bar(ctx, bar):
       }
     },
 
+    _coerceParamValue (param, raw) {
+      if (raw === null || raw === undefined) return undefined
+      const t = param.type
+      if (t === 'boolean') {
+        if (typeof raw === 'boolean') return raw
+        if (raw === 'true' || raw === 1 || raw === '1') return true
+        if (raw === 'false' || raw === 0 || raw === '0') return false
+        return undefined
+      }
+      if (t === 'integer') {
+        const n = parseInt(String(raw), 10)
+        if (!Number.isFinite(n)) return undefined
+        let v = n
+        if (param.min != null) v = Math.max(param.min, v)
+        if (param.max != null) v = Math.min(param.max, v)
+        return v
+      }
+      if (t === 'number' || t === 'percent') {
+        const n = Number(raw)
+        if (!Number.isFinite(n)) return undefined
+        let v = n
+        if (param.min != null) v = Math.max(param.min, v)
+        if (param.max != null) v = Math.min(param.max, v)
+        return v
+      }
+      if (t === 'select') {
+        const opts = param.options || []
+        const allowed = new Set(opts.map(o => o.value))
+        if (allowed.has(raw)) return raw
+        const s = String(raw)
+        if (allowed.has(s)) return s
+        return undefined
+      }
+      return String(raw)
+    },
+
+    applyAIParamUpdates (updates) {
+      if (!this.selectedTemplate || !updates || typeof updates !== 'object') return false
+      const allowed = new Set(this.selectedTemplate.params.map(p => p.name))
+      let changed = false
+      Object.keys(updates).forEach((k) => {
+        if (!allowed.has(k)) return
+        const param = this.selectedTemplate.params.find(p => p.name === k)
+        const v = this._coerceParamValue(param, updates[k])
+        if (v !== undefined) {
+          this.$set(this.templateParamValues, k, v)
+          changed = true
+        }
+      })
+      return changed
+    },
+
+    async handleAIAdjustParams () {
+      if (!this.aiPrompt.trim()) {
+        message.warning(this.$t('trading-assistant.editor.aiPromptRequired'))
+        return
+      }
+      if (!this.selectedTemplate) {
+        message.warning(this.$t('trading-assistant.editor.aiAdjustParamsNeedTemplate'))
+        return
+      }
+      this.aiAdjustingParams = true
+      try {
+        const res = await request({
+          url: '/api/strategies/ai-generate',
+          method: 'post',
+          data: {
+            prompt: this.aiPrompt,
+            user_id: this.userId,
+            intent: 'adjust_params',
+            template_key: this.selectedTemplateKey,
+            params: { ...this.templateParamValues },
+            code: this.getCode()
+          }
+        })
+        if (res && res.params && typeof res.params === 'object') {
+          const ok = this.applyAIParamUpdates(res.params)
+          if (ok) {
+            this.templateDirty = true
+            this.applySelectedTemplateToCode({ silent: true })
+            message.success(this.$t('trading-assistant.editor.aiAdjustParamsSuccess'))
+          } else {
+            message.warning(this.$t('trading-assistant.editor.aiAdjustParamsNoChanges'))
+          }
+        } else {
+          message.error((res && (res.msg || res.message)) || this.$t('trading-assistant.editor.aiAdjustParamsFailed'))
+        }
+      } catch (e) {
+        message.error((e && e.message) || this.$t('trading-assistant.editor.aiAdjustParamsFailed'))
+      } finally {
+        this.aiAdjustingParams = false
+      }
+    },
+
     async handleAIGenerate () {
       if (!this.aiPrompt.trim()) {
         message.warning(this.$t('trading-assistant.editor.aiPromptRequired'))
@@ -549,10 +623,18 @@ def on_bar(ctx, bar):
         const res = await request({
           url: '/api/strategies/ai-generate',
           method: 'post',
-          data: { prompt: this.aiPrompt, user_id: this.userId }
+          data: {
+            prompt: this.aiPrompt,
+            user_id: this.userId,
+            intent: 'generate_code',
+            template_key: this.selectedTemplateKey || undefined,
+            params: this.selectedTemplate ? { ...this.templateParamValues } : undefined,
+            code: this.getCode()
+          }
         })
-        if (res && res.code) {
-          this.setCode(res.code)
+        const code = res && typeof res.code === 'string' ? res.code : ''
+        if (code) {
+          this.setCode(code)
           message.success(this.$t('trading-assistant.editor.aiGenerateSuccess'))
         } else {
           message.error((res && (res.msg || res.message)) || this.$t('trading-assistant.editor.aiGenerateFailed'))
@@ -574,12 +656,23 @@ def on_bar(ctx, bar):
 
 .editor-layout {
   min-height: 450px;
+  display: flex;
+  align-items: stretch;
+}
+
+.code-col,
+.side-col {
+  display: flex;
+  flex-direction: column;
 }
 
 .code-section {
   border: 1px solid #e8e8e8;
   border-radius: 8px;
   overflow: hidden;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .section-header {
@@ -617,7 +710,8 @@ def on_bar(ctx, bar):
 }
 
 .code-editor-container {
-  height: 420px;
+  flex: 1;
+  min-height: 420px;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -638,26 +732,15 @@ def on_bar(ctx, bar):
   }
 
   /deep/ .CodeMirror-gutters {
-    min-width: 48px;
     border-right: 1px solid #e8e8e8;
     background: linear-gradient(to right, #fafafa 0%, #f5f5f5 100%);
   }
 
-  /deep/ .CodeMirror-linenumbers {
-    width: 44px !important;
-  }
-
   /deep/ .CodeMirror-linenumber {
-    min-width: 36px;
     padding: 0 8px 0 0;
     text-align: right;
     color: #999;
     font-size: 12px;
-  }
-
-  /deep/ .CodeMirror-sizer {
-    margin-left: 0 !important;
-    min-height: 100% !important;
   }
 
   /deep/ .CodeMirror-lines {
@@ -675,12 +758,37 @@ def on_bar(ctx, bar):
 }
 
 .side-tabs {
-  height: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  overflow: hidden;
+
+  /deep/ .ant-tabs-bar {
+    margin-bottom: 0;
+    flex-shrink: 0;
+    padding: 0 12px;
+    background: #fafafa;
+    border-bottom: 1px solid #f0f0f0;
+  }
 
   /deep/ .ant-tabs-content {
-    height: calc(100% - 40px);
+    flex: 1 1 auto;
+    min-height: 280px;
+    overflow-x: hidden;
     overflow-y: auto;
+    padding: 12px;
   }
+}
+
+.ai-actions {
+  margin-top: 12px;
+}
+
+.params-panel {
+  min-height: 120px;
 }
 
 .panel-intro {
@@ -827,35 +935,11 @@ def on_bar(ctx, bar):
   text-align: center;
 }
 
-.docs-content {
-  font-size: 13px;
-  line-height: 1.6;
-
-  /deep/ h4 {
-    font-size: 16px;
-    font-weight: 600;
-    margin-bottom: 12px;
-  }
-
-  /deep/ h5 {
-    font-size: 14px;
-    font-weight: 600;
-    margin: 16px 0 8px;
-    color: #1890ff;
-  }
-
-  /deep/ pre {
-    background: #f6f8fa;
-    padding: 12px;
-    border-radius: 6px;
-    overflow-x: auto;
-    font-size: 12px;
-    line-height: 1.5;
-  }
-
-  /deep/ code {
-    font-family: 'Courier New', Consolas, monospace;
-  }
+.params-empty-guide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
 }
 
 .theme-dark {
@@ -864,7 +948,7 @@ def on_bar(ctx, bar):
   }
 
   .section-header {
-    background: #1a1e28;
+    background: #1c1c1c;
     border-color: rgba(255, 255, 255, 0.1);
   }
 
@@ -873,6 +957,13 @@ def on_bar(ctx, bar):
   }
 
   .side-tabs {
+    border-color: rgba(255, 255, 255, 0.1);
+
+    /deep/ .ant-tabs-bar {
+      background: #1c1c1c;
+      border-bottom-color: rgba(255, 255, 255, 0.08);
+    }
+
     /deep/ .ant-tabs-nav .ant-tabs-tab {
       color: rgba(255, 255, 255, 0.55);
 
@@ -884,14 +975,10 @@ def on_bar(ctx, bar):
         color: #1890ff;
       }
     }
-
-    /deep/ .ant-tabs-bar {
-      border-bottom-color: rgba(255, 255, 255, 0.08);
-    }
   }
 
   .panel-intro {
-    background: #1a1e28;
+    background: #1c1c1c;
     border-color: rgba(255, 255, 255, 0.08);
   }
 
@@ -909,7 +996,7 @@ def on_bar(ctx, bar):
   .template-item,
   .param-item {
     border-color: rgba(255, 255, 255, 0.08);
-    background: #1a1e28;
+    background: #1c1c1c;
   }
 
   .template-item:hover,
@@ -938,7 +1025,7 @@ def on_bar(ctx, bar):
   /deep/ .ant-input-number-input,
   /deep/ .ant-select-selection,
   /deep/ .ant-select-selection--single {
-    background: #141821 !important;
+    background: #141414 !important;
     border-color: rgba(255, 255, 255, 0.1) !important;
     color: #d1d4dc !important;
   }
@@ -952,33 +1039,36 @@ def on_bar(ctx, bar):
     color: #40a9ff;
   }
 
-  .docs-content {
-    color: rgba(255, 255, 255, 0.75);
+  /deep/ .ant-empty-description {
+    color: rgba(255, 255, 255, 0.45);
   }
 
-  .docs-content /deep/ h4 {
-    color: #e0e6ed;
+  /deep/ .ant-alert-info {
+    background: rgba(24, 144, 255, 0.08);
+    border-color: rgba(24, 144, 255, 0.2);
+
+    .ant-alert-message {
+      color: rgba(255, 255, 255, 0.65);
+    }
   }
 
-  .docs-content /deep/ h5 {
-    color: #40a9ff;
+  .verify-btn {
+    color: #52c41a;
   }
 
-  .docs-content /deep/ pre {
-    background: #141821;
-    color: rgba(255, 255, 255, 0.7);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+  .ai-panel {
+    color: rgba(255, 255, 255, 0.78);
   }
 
   .code-editor-container {
     /deep/ .CodeMirror {
-      background: #0f141c;
+      background: #141414;
       color: #d1d4dc;
     }
 
     /deep/ .CodeMirror-gutters {
       border-right-color: rgba(255, 255, 255, 0.08);
-      background: linear-gradient(to right, #151922 0%, #1a1e28 100%);
+      background: linear-gradient(to right, #1a1a1a 0%, #1c1c1c 100%);
     }
 
     /deep/ .CodeMirror-linenumber {

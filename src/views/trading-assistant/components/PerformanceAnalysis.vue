@@ -1,5 +1,5 @@
 <template>
-  <div class="performance-analysis" :class="{ 'theme-dark': isDark }">
+  <div class="performance-analysis strategy-tab-pane-inner" :class="{ 'theme-dark': isDark }">
     <a-spin :spinning="loading">
       <div v-if="hasData">
         <!-- Metric Cards -->
@@ -54,7 +54,7 @@
       <a-empty
         v-else-if="!loading"
         :description="$t('trading-assistant.performance.noData')"
-        style="padding: 60px 0;"
+        class="strategy-tab-empty"
       />
     </a-spin>
   </div>
@@ -257,6 +257,12 @@ export default {
   padding: 4px 0;
 }
 
+.strategy-tab-empty {
+  padding: 48px 16px;
+  margin: 0 auto;
+  max-width: 360px;
+}
+
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -310,7 +316,7 @@ export default {
 
 .theme-dark {
   .metrics-grid .metric-card {
-    background: #1a1e28;
+    background: #1c1c1c;
     border: 1px solid rgba(255, 255, 255, 0.06);
 
     .metric-label {
@@ -332,11 +338,15 @@ export default {
   }
 
   .chart-container {
-    background: #141821;
+    background: #141414;
     border: 1px solid rgba(255, 255, 255, 0.06);
   }
 
   /deep/ .ant-empty-description {
+    color: rgba(255, 255, 255, 0.35);
+  }
+
+  .strategy-tab-empty /deep/ .ant-empty-description {
     color: rgba(255, 255, 255, 0.35);
   }
 }

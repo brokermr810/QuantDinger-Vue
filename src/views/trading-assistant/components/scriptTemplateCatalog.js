@@ -328,6 +328,123 @@ def on_bar(ctx, bar):
       { name: 'stop_pct', type: 'percent', default: 0.02, min: 0.001, max: 1, step: 0.001 },
       { name: 'take_profit_pct', type: 'percent', default: 0.05, min: 0.001, max: 1, step: 0.001 }
     ]
+  },
+  {
+    key: 'rsiMeanReversion',
+    icon: '📉',
+    code: `"""
+RSI mean reversion (long-focused)
+Buys when RSI is oversold; exits long when RSI is overbought.
+"""
+
+def on_init(ctx):
+    ctx.rsi_period = ctx.param('rsi_period', 14)
+    ctx.oversold = ctx.param('oversold', 30)
+    ctx.overbought = ctx.param('overbought', 70)
+    ctx.position_pct = ctx.param('position_pct', 0.5)
+
+def _rsi_simple(closes, period):
+    n = len(closes)
+    if n < period + 1:
+        return None
+    gains = 0.0
+    losses = 0.0
+    for i in range(n - period, n):
+        diff = closes[i] - closes[i - 1]
+        if diff > 0:
+            gains += diff
+        else:
+            losses -= diff
+    if losses == 0:
+        return 100.0 if gains > 0 else 50.0
+    rs = gains / losses
+    return 100.0 - (100.0 / (1.0 + rs))
+
+def on_bar(ctx, bar):
+    need = ctx.rsi_period + 3
+    bars = ctx.bars(need)
+    if len(bars) < need:
+        return
+    closes = [b['close'] for b in bars]
+    r = _rsi_simple(closes, ctx.rsi_period)
+    if r is None:
+        return
+    price = bar['close']
+    if r <= ctx.oversold and not ctx.position:
+        qty = (ctx.equity * ctx.position_pct) / price
+        ctx.buy(price, qty)
+        ctx.log(f"RSI BUY r={r:.1f} at {price:.2f}")
+    elif r >= ctx.overbought and ctx.position and ctx.position['side'] == 'long':
+        ctx.close_position()
+        ctx.log(f"RSI SELL r={r:.1f} at {price:.2f}")
+`,
+    params: [
+      { name: 'rsi_period', type: 'integer', default: 14, min: 2, max: 100, step: 1 },
+      { name: 'oversold', type: 'number', default: 30, min: 1, max: 50, step: 1 },
+      { name: 'overbought', type: 'number', default: 70, min: 50, max: 99, step: 1 },
+      { name: 'position_pct', type: 'percent', default: 0.5, min: 0.05, max: 1, step: 0.01 }
+    ]
+  },
+  {
+    key: 'macdCross',
+    icon: '📊',
+    code: `"""
+MACD histogram crossover
+Enters long when MACD histogram crosses above zero; exits when it crosses below.
+"""
+
+def on_init(ctx):
+    ctx.macd_fast = ctx.param('macd_fast', 12)
+    ctx.macd_slow = ctx.param('macd_slow', 26)
+    ctx.macd_signal = ctx.param('macd_signal', 9)
+    ctx.position_pct = ctx.param('position_pct', 0.6)
+
+def _ema_series(vals, period):
+    k = 2.0 / (period + 1)
+    out = []
+    e = float(vals[0])
+    out.append(e)
+    for v in vals[1:]:
+        v = float(v)
+        e = v * k + e * (1 - k)
+        out.append(e)
+    return out
+
+def _macd_hist_last_two(closes, fast, slow, sig):
+    n = len(closes)
+    if n < slow + sig + 2:
+        return None, None
+    ef = _ema_series(closes, fast)
+    es = _ema_series(closes, slow)
+    macd = [ef[i] - es[i] for i in range(n)]
+    sg = _ema_series(macd, sig)
+    hist = [macd[i] - sg[i] for i in range(n)]
+    return hist[-2], hist[-1]
+
+def on_bar(ctx, bar):
+    need = ctx.macd_slow + ctx.macd_signal + 30
+    bars = ctx.bars(need)
+    if len(bars) < need:
+        return
+    closes = [b['close'] for b in bars]
+    h0, h1 = _macd_hist_last_two(closes, ctx.macd_fast, ctx.macd_slow, ctx.macd_signal)
+    if h0 is None:
+        return
+    price = bar['close']
+    if h0 <= 0 and h1 > 0 and not ctx.position:
+        qty = (ctx.equity * ctx.position_pct) / price
+        ctx.buy(price, qty)
+        ctx.log(f"MACD cross up at {price:.2f}")
+    elif h0 >= 0 and h1 < 0 and ctx.position and ctx.position['side'] == 'long':
+        ctx.close_position()
+        ctx.log(f"MACD cross down at {price:.2f}")
+`,
+    params: [
+      { name: 'macd_fast', type: 'integer', default: 12, min: 2, max: 50, step: 1 },
+      { name: 'macd_slow', type: 'integer', default: 26, min: 5, max: 120, step: 1 },
+      { name: 'macd_signal', type: 'integer', default: 9, min: 2, max: 50, step: 1 },
+      { name: 'position_pct', type: 'percent', default: 0.6, min: 0.05, max: 1, step: 0.01 }
+    ]
   }
 ]
 

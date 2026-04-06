@@ -1242,6 +1242,8 @@ const locale = {
   'trading-assistant.indicatorType.volatility': 'Fluktuation',
   'trading-assistant.indicatorType.volume': 'Lautstärke',
   'trading-assistant.indicatorType.custom': 'Anpassen',
+  'trading-assistant.indicatorType.python': 'Python',
+  'trading-assistant.indicatorType.pine': 'Pine Script',
   'trading-assistant.exchangeNames': {
     'okx': 'OKX',
     'binance': 'Binance',

@@ -651,7 +651,7 @@
     <!-- Create/Edit User Modal -->
     <a-modal
       v-model="modalVisible"
-      wrap-class-name="user-manage-modal"
+      :wrap-class-name="userManageModalWrapClass"
       :title="isEdit ? ($t('userManage.editUser') || 'Edit User') : ($t('userManage.createUser') || 'Create User')"
       :confirmLoading="modalLoading"
       @ok="handleModalOk"
@@ -730,7 +730,7 @@
     <!-- Reset Password Modal -->
     <a-modal
       v-model="resetPasswordVisible"
-      wrap-class-name="user-manage-modal"
+      :wrap-class-name="userManageModalWrapClass"
       :title="$t('userManage.resetPassword') || 'Reset Password'"
       :confirmLoading="resetPasswordLoading"
       @ok="handleResetPassword"
@@ -761,7 +761,7 @@
     <!-- Adjust Credits Modal -->
     <a-modal
       v-model="creditsModalVisible"
-      wrap-class-name="user-manage-modal"
+      :wrap-class-name="userManageModalWrapClass"
       :title="($t('userManage.adjustCredits') || 'Adjust Credits') + (creditsEditingUser ? ` - ${creditsEditingUser.username}` : '')"
       :confirmLoading="creditsLoading"
       @ok="handleSetCredits"
@@ -792,7 +792,7 @@
     <!-- Set VIP Modal -->
     <a-modal
       v-model="vipModalVisible"
-      wrap-class-name="user-manage-modal"
+      :wrap-class-name="userManageModalWrapClass"
       :title="($t('userManage.setVip') || 'Set VIP') + (vipEditingUser ? ` - ${vipEditingUser.username}` : '')"
       :confirmLoading="vipLoading"
       @ok="handleSetVip"
@@ -923,6 +923,9 @@ export default {
     ...mapGetters(['userInfo']),
     isDarkTheme () {
       return this.navTheme === 'dark' || this.navTheme === 'realdark'
+    },
+    userManageModalWrapClass () {
+      return this.isDarkTheme ? 'user-manage-modal user-manage-modal-dark' : 'user-manage-modal'
     },
     currentUserId () {
       return this.userInfo?.id
@@ -2366,6 +2369,66 @@ export default {
 
 <style lang="less">
 /* Modal 挂载在 body 上，需非 scoped */
+.user-manage-modal-dark {
+  .ant-modal-content,
+  .ant-modal-header,
+  .ant-modal-body,
+  .ant-modal-footer {
+    background: #1c1c1c;
+  }
+
+  .ant-modal-header {
+    border-bottom-color: #2a2a2a;
+  }
+
+  .ant-modal-title {
+    color: #e0e6ed;
+  }
+
+  .ant-modal-close {
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  .ant-modal-footer {
+    border-top-color: #2a2a2a;
+  }
+
+  .ant-form-item-label > label,
+  .current-credits-info .label,
+  .current-vip-info .label {
+    color: #c9d1d9;
+  }
+
+  .ant-input,
+  .ant-input-password,
+  .ant-input-affix-wrapper,
+  .ant-select-selection,
+  .ant-calendar-picker-input {
+    background: #141414 !important;
+    border-color: #303030 !important;
+    color: #e0e6ed !important;
+  }
+
+  .ant-input::placeholder,
+  .ant-input-password input::placeholder {
+    color: #6e7681;
+  }
+
+  .ant-input-prefix,
+  .ant-input-affix-wrapper .ant-input-prefix,
+  .ant-input-password-icon,
+  .ant-input-password .anticon,
+  .ant-calendar-picker-icon,
+  .anticon {
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  .current-credits-info,
+  .current-vip-info {
+    background: #141414;
+  }
+}
+
 @media (max-width: 576px) {
   .user-manage-modal .ant-modal {
     max-width: calc(100vw - 16px) !important;
