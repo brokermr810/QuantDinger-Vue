@@ -247,7 +247,11 @@ export default {
       const years = runningDays / 365.0
       let annualReturn = 0
       if (initial > 0 && final > 0 && years > 1e-6) {
-        annualReturn = Math.pow(final / initial, 1 / Math.max(years, 1 / 365)) - 1
+        if (years >= 1) {
+          annualReturn = Math.pow(final / initial, 1 / years) - 1
+        } else {
+          annualReturn = totalReturn * (365 / Math.max(runningDays, 1))
+        }
       }
 
       const stepRets = []

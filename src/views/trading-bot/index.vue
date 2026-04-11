@@ -1,217 +1,175 @@
 <template>
   <div class="trading-bot" :class="{ 'theme-dark': isDarkTheme }">
-    <div class="page-header">
-      <h2 class="page-title"><a-icon type="robot" class="title-icon" /> 交易机器人</h2>
-      <p class="page-subtitle">Monitor, start, and stop your live trading bots</p>
-    </div>
+    <!-- View: 详情 -->
+    <template v-if="viewMode === 'detail' && selectedBot">
+      <div class="detail-back">
+        <a-button type="link" @click="viewMode = 'list'; selectedBot = null">
+          <a-icon type="arrow-left" /> {{ $t('trading-bot.backToList') }}
+        </a-button>
+      </div>
+      <bot-detail
+        :bot="selectedBot"
+        :isDark="isDarkTheme"
+        :actionLoading="actionLoading"
+        @start="handleStartBot"
+        @stop="handleStopBot"
+        @edit="handleEditBot"
+        @delete="handleDeleteBot"
+        @close="viewMode = 'list'; selectedBot = null"
+      />
+    </template>
 
-    <!-- KPI Cards -->
-    <div class="kpi-row">
-      <div v-for="kpi in kpiCards" :key="kpi.label" class="kpi-card">
-        <div class="kpi-icon" :style="{ color: kpi.color, background: kpi.color + '15' }">
-          <a-icon :type="kpi.icon" />
-        </div>
-        <div class="kpi-body">
-          <div class="kpi-label">{{ kpi.label }}</div>
-          <div class="kpi-value">{{ kpi.value }}</div>
+    <!-- View: 主列表（默认视图） -->
+    <template v-else>
+      <div class="page-header">
+        <div class="page-header-left">
+          <h2 class="page-title"><a-icon type="robot" class="title-icon" /> {{ $t('trading-bot.pageTitle') }}</h2>
+          <p class="page-subtitle">{{ $t('trading-bot.pageSubtitle') }}</p>
         </div>
       </div>
-    </div>
 
-    <!-- Main layout -->
-    <a-row :gutter="20" class="main-layout">
-      <!-- Left: Bot list -->
-      <a-col :xs="24" :md="8" :lg="7">
-        <a-card :bordered="false" class="list-card">
-          <div slot="title" class="card-title-row">
-            <span>Bots ({{ strategies.length }})</span>
-            <a-button-group size="small">
-              <a-button @click="$router.push({ path: '/strategy-live', query: { mode: 'create' } })">
-                <a-icon type="line-chart" /> {{ $t('trading-bot.newIndicatorStrategy') }}
-              </a-button>
-              <a-button type="primary" @click="$router.push({ path: '/strategy-script', query: { mode: 'create' } })">
-                <a-icon type="code" /> {{ $t('trading-bot.newScriptStrategy') }}
-              </a-button>
-            </a-button-group>
+      <!-- KPI Cards -->
+      <div class="kpi-row">
+        <div v-for="kpi in kpiCards" :key="kpi.label" class="kpi-card">
+          <div class="kpi-icon" :style="{ color: kpi.color, background: kpi.color + '15' }">
+            <a-icon :type="kpi.icon" />
           </div>
-          <a-spin :spinning="loading">
-            <div v-if="strategies.length === 0 && !loading" class="empty-list">
-              <a-empty description="No bots yet" />
-              <p style="color: #8c8c8c; margin-top: 8px;">{{ $t('trading-bot.emptyHint') }}</p>
-              <a-button-group style="margin-top: 12px;">
-                <a-button type="primary" @click="$router.push({ path: '/strategy-live', query: { mode: 'create' } })">
-                  <a-icon type="line-chart" /> {{ $t('trading-bot.newIndicatorStrategy') }}
-                </a-button>
-                <a-button @click="$router.push({ path: '/strategy-script', query: { mode: 'create' } })">
-                  <a-icon type="code" /> {{ $t('trading-bot.newScriptStrategy') }}
-                </a-button>
-              </a-button-group>
-            </div>
-            <div v-else class="bot-items">
-              <div
-                v-for="item in strategies"
-                :key="item.id"
-                :class="['bot-item', { active: selectedBot && selectedBot.id === item.id }]"
-                @click="handleSelectBot(item)"
-              >
-                <div class="bot-main">
-                  <div class="bot-name">{{ item.strategy_name }}</div>
-                  <div class="bot-meta">
-                    <span class="bot-symbol" v-if="item.trading_config && item.trading_config.symbol">
-                      {{ item.trading_config.symbol }}
-                    </span>
-                    <span class="bot-exchange" v-if="item.exchange_config && item.exchange_config.exchange_id">
-                      {{ getExchangeDisplayName(item.exchange_config.exchange_id) }}
-                    </span>
-                  </div>
-                </div>
-                <div class="bot-status-col">
-                  <span :class="['status-dot', item.status === 'running' ? 'running' : 'stopped']"></span>
-                  <span class="status-text">{{ getStatusText(item.status) }}</span>
-                </div>
-              </div>
-            </div>
-          </a-spin>
-        </a-card>
-      </a-col>
-
-      <!-- Right: Bot detail -->
-      <a-col :xs="24" :md="16" :lg="17">
-        <div v-if="!selectedBot" class="empty-detail">
-          <div class="empty-detail-card">
-            <a-icon type="robot" style="font-size: 48px; color: #d9d9d9;" />
-            <h3>Select a bot</h3>
-            <p>Choose a bot from the list to view details and manage</p>
+          <div class="kpi-body">
+            <div class="kpi-label">{{ kpi.label }}</div>
+            <div class="kpi-value">{{ kpi.value }}</div>
           </div>
         </div>
-        <div v-else class="detail-area">
-          <!-- Bot header -->
-          <a-card :bordered="false" class="detail-header-card">
-            <div class="detail-header">
-              <div class="header-info">
-                <h3>{{ selectedBot.strategy_name }}</h3>
-                <div class="header-tags">
-                  <a-tag :color="selectedBot.status === 'running' ? 'green' : 'default'">
-                    {{ getStatusText(selectedBot.status) }}
-                  </a-tag>
-                  <a-tag v-if="selectedBot.trading_config && selectedBot.trading_config.symbol" color="blue">
-                    {{ selectedBot.trading_config.symbol }}
-                  </a-tag>
-                  <a-tag v-if="selectedBot.exchange_config && selectedBot.exchange_config.exchange_id">
-                    {{ getExchangeDisplayName(selectedBot.exchange_config.exchange_id) }}
-                  </a-tag>
-                </div>
-              </div>
-              <div class="header-actions">
-                <a-button
-                  v-if="selectedBot.status !== 'running'"
-                  type="primary"
-                  :loading="actionLoading"
-                  @click="handleStartBot(selectedBot)"
-                >
-                  <a-icon type="play-circle" /> Start
-                </a-button>
-                <a-button
-                  v-else
-                  type="danger"
-                  :loading="actionLoading"
-                  @click="handleStopBot(selectedBot)"
-                >
-                  <a-icon type="pause-circle" /> Stop
-                </a-button>
-                <a-button @click="goToStrategyScripts(selectedBot)">
-                  <a-icon type="edit" /> Edit Code
-                </a-button>
-                <a-button type="danger" ghost @click="handleDeleteBot(selectedBot)">
-                  <a-icon type="delete" />
-                </a-button>
-              </div>
-            </div>
-          </a-card>
+      </div>
 
-          <!-- Detail tabs -->
-          <a-card :bordered="false" class="detail-tabs-card" style="margin-top: 12px;">
-            <a-tabs v-model="detailTab" :animated="false">
-              <a-tab-pane key="positions" tab="Positions">
-                <position-records
-                  v-if="detailTab === 'positions'"
-                  :strategyId="selectedBot.id"
-                  :isDark="isDarkTheme"
-                />
-              </a-tab-pane>
-              <a-tab-pane key="trades" tab="Trades">
-                <trading-records
-                  v-if="detailTab === 'trades'"
-                  :strategyId="selectedBot.id"
-                  :isDark="isDarkTheme"
-                />
-              </a-tab-pane>
-              <a-tab-pane key="performance" tab="Performance">
-                <performance-analysis
-                  v-if="detailTab === 'performance'"
-                  :strategyId="selectedBot.id"
-                  :isDark="isDarkTheme"
-                />
-              </a-tab-pane>
-              <a-tab-pane key="logs" tab="Logs">
-                <strategy-logs
-                  v-if="detailTab === 'logs'"
-                  :strategyId="selectedBot.id"
-                  :isDark="isDarkTheme"
-                />
-              </a-tab-pane>
-            </a-tabs>
-          </a-card>
-        </div>
-      </a-col>
-    </a-row>
+      <!-- Bot type selection cards -->
+      <bot-type-cards
+        @select="handleSelectBotType"
+        @ai-create="showAiDialog = true"
+      />
+
+      <!-- AI 智能创建弹窗 -->
+      <ai-bot-dialog
+        :visible="showAiDialog"
+        :isDark="isDarkTheme"
+        @close="showAiDialog = false"
+        @apply="handleAiApply"
+      />
+
+      <!-- Bot list -->
+      <div style="margin-top: 24px;">
+        <bot-list
+          :bots="bots"
+          :loading="loading"
+          :selectedId="selectedBot ? selectedBot.id : null"
+          :actionLoadingId="actionLoadingId"
+          @select="handleViewDetail"
+          @start="handleStartBot"
+          @stop="handleStopBot"
+          @edit="handleEditBot"
+          @delete="handleDeleteBot"
+        />
+      </div>
+    </template>
+
+    <!-- 创建/编辑向导弹窗 -->
+    <a-modal
+      :visible="wizardVisible"
+      :title="null"
+      :footer="null"
+      :width="680"
+      :bodyStyle="{ padding: 0 }"
+      :maskClosable="false"
+      :wrapClassName="isDarkTheme ? 'wizard-modal-dark' : 'wizard-modal'"
+      :destroyOnClose="true"
+      centered
+      @cancel="handleWizardCancel"
+    >
+      <bot-create-wizard
+        v-if="wizardVisible"
+        :key="editingBot ? ('edit-' + editingBot.id) : ('create-' + selectedBotType)"
+        :botType="editingBot ? (editingBot.bot_type || 'grid') : selectedBotType"
+        :aiPreset="aiPreset"
+        :editBot="editingBot"
+        :isModal="true"
+        @cancel="handleWizardCancel"
+        @created="handleBotCreated"
+        @updated="handleBotUpdated"
+      />
+    </a-modal>
   </div>
 </template>
 
 <script>
 import { baseMixin } from '@/store/app-mixin'
-import { getStrategyList, startStrategy, stopStrategy, deleteStrategy, getStrategyEquityCurve } from '@/api/strategy'
+import { getStrategyList, startStrategy, stopStrategy, deleteStrategy } from '@/api/strategy'
 import { getUserInfo } from '@/api/login'
-import TradingRecords from '@/views/trading-assistant/components/TradingRecords.vue'
-import PositionRecords from '@/views/trading-assistant/components/PositionRecords.vue'
-import PerformanceAnalysis from '@/views/trading-assistant/components/PerformanceAnalysis.vue'
-import StrategyLogs from '@/views/trading-assistant/components/StrategyLogs.vue'
+import BotTypeCards from './components/BotTypeCards.vue'
+import BotCreateWizard from './components/BotCreateWizard.vue'
+import BotList from './components/BotList.vue'
+import BotDetail from './components/BotDetail.vue'
+import AiBotDialog from './components/AiBotDialog.vue'
 
 export default {
   name: 'TradingBot',
   mixins: [baseMixin],
-  components: { TradingRecords, PositionRecords, PerformanceAnalysis, StrategyLogs },
+  components: { BotTypeCards, BotCreateWizard, BotList, BotDetail, AiBotDialog },
   data () {
     return {
       userId: null,
       loading: false,
-      strategies: [],
+      bots: [],
+      viewMode: 'list',
+      selectedBotType: null,
       selectedBot: null,
-      detailTab: 'positions',
       actionLoading: false,
-      equityCurve: []
+      actionLoadingId: null,
+      showAiDialog: false,
+      aiPreset: null,
+      editingBot: null
     }
   },
   computed: {
     isDarkTheme () {
       return this.navTheme === 'dark' || this.navTheme === 'realdark'
     },
+    wizardVisible () {
+      return this.viewMode === 'create' || this.viewMode === 'edit'
+    },
     kpiCards () {
-      const strats = this.strategies || []
-      const running = strats.filter(s => s.status === 'running').length
-      const total = strats.length
+      const list = this.bots || []
+      const running = list.filter(s => s.status === 'running').length
+      const total = list.length
       let totalEquity = 0
       let totalPnl = 0
-      strats.forEach(s => {
-        const tc = s.trading_config || {}
-        totalEquity += tc.initial_capital || 0
+      list.forEach(s => {
+        totalEquity += (s.trading_config?.initial_capital) || 0
         totalPnl += s.unrealized_pnl || 0
       })
       return [
-        { label: 'Total Equity', value: '$' + totalEquity.toLocaleString('en-US', { minimumFractionDigits: 2 }), icon: 'wallet', color: '#1890ff' },
-        { label: 'Total PnL', value: (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toLocaleString('en-US', { minimumFractionDigits: 2 }), icon: 'rise', color: totalPnl >= 0 ? '#52c41a' : '#f5222d' },
-        { label: 'Running Bots', value: `${running} / ${total}`, icon: 'robot', color: '#722ed1' },
-        { label: 'Stopped', value: String(total - running), icon: 'pause-circle', color: '#faad14' }
+        {
+          label: this.$t('trading-bot.kpi.totalEquity'),
+          value: '$' + totalEquity.toLocaleString('en-US', { minimumFractionDigits: 2 }),
+          icon: 'wallet',
+          color: '#1890ff'
+        },
+        {
+          label: this.$t('trading-bot.kpi.totalPnl'),
+          value: (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toLocaleString('en-US', { minimumFractionDigits: 2 }),
+          icon: 'rise',
+          color: totalPnl >= 0 ? '#52c41a' : '#f5222d'
+        },
+        {
+          label: this.$t('trading-bot.kpi.running'),
+          value: `${running} / ${total}`,
+          icon: 'robot',
+          color: '#722ed1'
+        },
+        {
+          label: this.$t('trading-bot.kpi.stopped'),
+          value: String(total - running),
+          icon: 'pause-circle',
+          color: '#faad14'
+        }
       ]
     }
   },
@@ -222,110 +180,146 @@ export default {
     } catch {
       this.userId = 1
     }
-    this.loadStrategies()
+    this.loadBots()
     const q = this.$route.query
     if (q.strategy_id) {
       this.$nextTick(() => {
-        const s = this.strategies.find(s => s.id === Number(q.strategy_id))
-        if (s) this.selectedBot = s
+        const found = this.bots.find(b => b.id === Number(q.strategy_id))
+        if (found) {
+          this.selectedBot = found
+          this.viewMode = 'detail'
+        }
       })
     }
   },
   methods: {
-    async loadStrategies () {
+    async loadBots () {
       this.loading = true
       try {
         const res = await getStrategyList()
-        this.strategies = Array.isArray(res?.data?.strategies) ? res.data.strategies : []
+        const all = Array.isArray(res?.data?.strategies) ? res.data.strategies : []
+        this.bots = all
+          .filter(s => s.strategy_mode === 'bot' || s.bot_type || (s.trading_config && s.trading_config.bot_type))
+          .map(s => ({
+            ...s,
+            bot_type: s.bot_type || (s.trading_config && s.trading_config.bot_type) || ''
+          }))
         if (this.selectedBot) {
-          const updated = this.strategies.find(s => s.id === this.selectedBot.id)
+          const updated = this.bots.find(b => b.id === this.selectedBot.id)
           if (updated) this.selectedBot = updated
         }
         const q = this.$route.query
         if (q.strategy_id && !this.selectedBot) {
-          const s = this.strategies.find(s => s.id === Number(q.strategy_id))
-          if (s) this.selectedBot = s
+          const found = this.bots.find(b => b.id === Number(q.strategy_id))
+          if (found) {
+            this.selectedBot = found
+            this.viewMode = 'detail'
+          }
         }
       } catch {
-        this.strategies = []
+        this.bots = []
       } finally {
         this.loading = false
       }
     },
-    handleSelectBot (item) {
+    handleSelectBotType (type) {
+      this.selectedBotType = type
+      this.aiPreset = null
+      this.editingBot = null
+      this.viewMode = 'create'
+    },
+    handleAiApply (recommendation) {
+      this.showAiDialog = false
+      this.selectedBotType = recommendation.botType || 'grid'
+      this.aiPreset = recommendation
+      this.editingBot = null
+      this.viewMode = 'create'
+    },
+    handleBotCreated () {
+      this.viewMode = 'list'
+      this.selectedBotType = null
+      this.editingBot = null
+      this.loadBots()
+    },
+    handleBotUpdated () {
+      this.viewMode = 'list'
+      this.editingBot = null
+      this.selectedBotType = null
+      this.loadBots()
+    },
+    handleEditBot (item) {
+      if (item.status === 'running') {
+        this.$message.warning(this.$t('trading-bot.msg.stopFirst'))
+        return
+      }
+      this.editingBot = item
+      this.aiPreset = null
+      this.viewMode = 'edit'
+    },
+    handleWizardCancel () {
+      this.viewMode = 'list'
+      this.editingBot = null
+      this.selectedBotType = null
+      this.aiPreset = null
+    },
+    handleViewDetail (item) {
       this.selectedBot = item
-      this.detailTab = 'positions'
-      this.loadEquityCurve(item.id)
+      this.viewMode = 'detail'
     },
     async handleStartBot (item) {
       this.actionLoading = true
+      this.actionLoadingId = item.id
       try {
         await startStrategy(item.id)
-        this.$message.success('Bot started')
-        this.loadStrategies()
+        this.$message.success(this.$t('trading-bot.msg.started'))
+        this.loadBots()
       } catch (e) {
-        this.$message.error(e.message || 'Failed to start')
+        this.$message.error(e.message || this.$t('trading-bot.msg.startFail'))
       } finally {
         this.actionLoading = false
+        this.actionLoadingId = null
       }
     },
     async handleStopBot (item) {
       this.$confirm({
-        title: 'Stop Bot',
-        content: `Stop "${item.strategy_name}"?`,
+        title: this.$t('trading-bot.msg.stopTitle'),
+        content: this.$t('trading-bot.msg.stopContent', { name: item.strategy_name }),
         okType: 'danger',
         onOk: async () => {
           this.actionLoading = true
+          this.actionLoadingId = item.id
           try {
             await stopStrategy(item.id)
-            this.$message.success('Bot stopped')
-            this.loadStrategies()
+            this.$message.success(this.$t('trading-bot.msg.stopped'))
+            this.loadBots()
           } catch (e) {
-            this.$message.error(e.message || 'Failed')
+            this.$message.error(e.message || this.$t('trading-bot.msg.stopFail'))
           } finally {
             this.actionLoading = false
+            this.actionLoadingId = null
           }
         }
       })
     },
     handleDeleteBot (item) {
       if (item.status === 'running') {
-        this.$message.warning('Stop the bot before deleting')
+        this.$message.warning(this.$t('trading-bot.msg.stopFirst'))
         return
       }
       this.$confirm({
-        title: 'Delete Bot',
-        content: `Delete "${item.strategy_name}"? This cannot be undone.`,
+        title: this.$t('trading-bot.msg.deleteTitle'),
+        content: this.$t('trading-bot.msg.deleteContent', { name: item.strategy_name }),
         okType: 'danger',
         onOk: async () => {
           await deleteStrategy(item.id)
-          this.$message.success('Deleted')
-          if (this.selectedBot?.id === item.id) this.selectedBot = null
-          this.loadStrategies()
+          this.$message.success(this.$t('trading-bot.msg.deleted'))
+          if (this.selectedBot?.id === item.id) {
+            this.selectedBot = null
+            this.viewMode = 'list'
+          }
+          this.loadBots()
         }
       })
-    },
-    async loadEquityCurve (id) {
-      try {
-        const res = await getStrategyEquityCurve(id)
-        this.equityCurve = res?.data?.curve || []
-      } catch {
-        this.equityCurve = []
-      }
-    },
-    goToStrategyScripts (item) {
-      const q = { strategy_id: String(item.id) }
-      if (item.strategy_mode === 'script') {
-        this.$router.push({ path: '/strategy-script', query: q })
-      } else {
-        this.$router.push({ path: '/strategy-live', query: q })
-      }
-    },
-    getStatusText (s) {
-      return { running: 'Running', stopped: 'Stopped', error: 'Error', creating: 'Creating' }[s] || s || 'Idle'
-    },
-    getExchangeDisplayName (id) {
-      return { bybit: 'Bybit', gate: 'Gate.io', binance: 'Binance' }[id] || id || '-'
     }
   }
 }
@@ -339,6 +333,9 @@ export default {
 
 .page-header {
   margin-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
 
   .page-title {
     font-size: 22px;
@@ -365,11 +362,23 @@ export default {
   }
 }
 
+.detail-back {
+  margin-bottom: 12px;
+
+  .ant-btn-link {
+    padding: 0;
+    font-size: 14px;
+    color: #8c8c8c;
+
+    &:hover { color: #1890ff; }
+  }
+}
+
 .kpi-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .kpi-card {
@@ -415,174 +424,12 @@ export default {
   color: #262626;
 }
 
-.list-card {
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-
-  .card-title-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px;
-    width: 100%;
-  }
-}
-
-.bot-items {
-  max-height: calc(100vh - 400px);
-  overflow-y: auto;
-}
-
-.bot-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.2s;
-  margin-bottom: 6px;
-
-  &:hover {
-    background: #f5f7fa;
-    border-color: #e8e8e8;
-  }
-
-  &.active {
-    background: #e6f7ff;
-    border-color: #91d5ff;
-  }
-
-  .bot-main {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .bot-name {
-    font-weight: 600;
-    font-size: 14px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .bot-meta {
-    display: flex;
-    gap: 8px;
-    font-size: 12px;
-    color: #8c8c8c;
-    margin-top: 2px;
-  }
-}
-
-.bot-status-col {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-
-  &.running {
-    background: #52c41a;
-    box-shadow: 0 0 6px rgba(82, 196, 26, 0.4);
-    animation: pulse 2s infinite;
-  }
-
-  &.stopped {
-    background: #d9d9d9;
-  }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-.status-text {
-  font-size: 12px;
-  color: #8c8c8c;
-}
-
-.empty-list {
-  text-align: center;
-  padding: 24px 0;
-}
-
-.empty-detail {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 400px;
-
-  .empty-detail-card {
-    text-align: center;
-    color: #8c8c8c;
-  }
-
-  h3 {
-    font-size: 18px;
-    margin: 16px 0 8px;
-    color: #333;
-  }
-
-  p {
-    font-size: 14px;
-  }
-}
-
-.detail-header-card,
-.detail-tabs-card {
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-}
-
-.detail-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-
-  .header-info {
-    flex: 1;
-
-    h3 {
-      font-size: 18px;
-      font-weight: 700;
-      margin: 0 0 8px;
-    }
-  }
-
-  .header-tags {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  .header-actions {
-    display: flex;
-    gap: 8px;
-  }
-}
-
-// Responsive: stack KPI cards on small screens
 @media (max-width: 768px) {
-  .kpi-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 480px) {
-  .kpi-row {
-    grid-template-columns: 1fr;
-  }
+  .kpi-row { grid-template-columns: 1fr; }
 }
 
 // Dark theme
@@ -595,9 +442,7 @@ export default {
       -webkit-background-clip: text;
     }
 
-    .page-subtitle {
-      color: rgba(255, 255, 255, 0.45);
-    }
+    .page-subtitle { color: rgba(255, 255, 255, 0.45); }
 
     .title-icon {
       color: #40a9ff !important;
@@ -611,23 +456,43 @@ export default {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 
-  .kpi-value {
-    color: rgba(255, 255, 255, 0.85);
-  }
+  .kpi-value { color: rgba(255, 255, 255, 0.85); }
+  .kpi-label { color: rgba(255, 255, 255, 0.45); }
 
-  .kpi-label {
-    color: rgba(255, 255, 255, 0.45);
-  }
+  .detail-back .ant-btn-link { color: rgba(255, 255, 255, 0.45); }
 
-  .list-card {
+  // BotTypeCards
+  /deep/ .section-header h3 { color: rgba(255, 255, 255, 0.85); }
+  /deep/ .section-header .section-desc { color: rgba(255, 255, 255, 0.45); }
+
+  /deep/ .type-card:not(.ai-card) {
     background: #1f1f1f;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+    border-color: #303030;
+
+    &:hover {
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      border-color: #434343;
+    }
+
+    .card-name { color: rgba(255, 255, 255, 0.85); }
+    .card-desc { color: rgba(255, 255, 255, 0.45); }
+    .card-arrow { color: rgba(255, 255, 255, 0.25); }
   }
 
-  .bot-item {
+  // BotList
+  /deep/ .list-header h3 {
+    color: rgba(255, 255, 255, 0.85);
+
+    .count { color: rgba(255, 255, 255, 0.45); }
+  }
+
+  /deep/ .bot-row {
+    background: #1f1f1f;
+    border-color: #303030;
+
     &:hover {
-      background: rgba(255, 255, 255, 0.04);
-      border-color: #303030;
+      border-color: #434343;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
     }
 
     &.active {
@@ -635,62 +500,272 @@ export default {
       border-color: rgba(23, 125, 220, 0.3);
     }
 
-    .bot-name {
-      color: rgba(255, 255, 255, 0.85);
-    }
-
-    .bot-meta {
-      color: rgba(255, 255, 255, 0.45);
-    }
+    .bot-name { color: rgba(255, 255, 255, 0.85); }
+    .meta-text { color: rgba(255, 255, 255, 0.45); }
   }
 
-  .empty-detail {
-    h3 {
-      color: rgba(255, 255, 255, 0.85);
-    }
+  /deep/ .bot-status-badge .text { color: rgba(255, 255, 255, 0.45); }
+  /deep/ .empty-state { color: rgba(255, 255, 255, 0.45); }
 
-    p {
-      color: rgba(255, 255, 255, 0.45);
-    }
-  }
-
-  .detail-header-card,
-  .detail-tabs-card {
+  // BotDetail
+  /deep/ .detail-header-card,
+  /deep/ .detail-tabs-card {
     background: #1f1f1f;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
 
-    /deep/ .ant-card-body {
-      background: #1f1f1f;
+    .ant-card-body { background: #1f1f1f; }
+  }
+
+  /deep/ .detail-header .header-info h3 { color: rgba(255, 255, 255, 0.85); }
+
+  // Ant Tabs
+  /deep/ .ant-tabs-bar { border-bottom-color: #303030; }
+  /deep/ .ant-tabs-tab { color: rgba(255, 255, 255, 0.65); }
+  /deep/ .ant-tabs-tab-active { color: #177ddc !important; }
+  /deep/ .ant-tabs-ink-bar { background: #177ddc; }
+  /deep/ .ant-card-head { border-bottom-color: #303030; background: transparent; }
+  /deep/ .ant-card-head-title { color: rgba(255, 255, 255, 0.85); }
+
+  // AI Banner (stays inside page so /deep/ works)
+  /deep/ .ai-create-banner {
+    border: 1px solid rgba(102, 126, 234, 0.3);
+
+    &:hover {
+      box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
     }
   }
 
-  .detail-header .header-info h3 {
-    color: rgba(255, 255, 255, 0.85);
-  }
-
-  /deep/ .ant-tabs-bar {
-    border-bottom-color: #303030;
-  }
-
-  /deep/ .ant-tabs-tab {
+  /deep/ .ai-reason-bar {
+    background: rgba(102, 126, 234, 0.1);
+    border-color: rgba(102, 126, 234, 0.2);
     color: rgba(255, 255, 255, 0.65);
   }
 
-  /deep/ .ant-tabs-tab-active {
-    color: #177ddc !important;
+  // BotCreateWizard
+  /deep/ .wizard-title { color: rgba(255, 255, 255, 0.85) !important; }
+  /deep/ .back-btn { color: rgba(255, 255, 255, 0.45) !important; }
+
+  /deep/ .step-hint {
+    background: rgba(23, 125, 220, 0.1);
+    color: rgba(255, 255, 255, 0.65);
   }
 
-  /deep/ .ant-tabs-ink-bar {
-    background: #177ddc;
+  /deep/ .form-hint {
+    color: rgba(255, 255, 255, 0.45);
+    a { color: #177ddc; }
   }
 
-  /deep/ .ant-card-head {
-    border-bottom-color: #303030;
-    background: transparent;
+  /deep/ .confirm-section h4 { color: rgba(255, 255, 255, 0.85); }
+  /deep/ .wizard-footer { border-top-color: #303030; }
+
+  /deep/ .config-summary {
+    .label { color: rgba(255, 255, 255, 0.45); }
+    .value { color: rgba(255, 255, 255, 0.85); }
   }
 
-  /deep/ .ant-card-head-title {
+  /deep/ .dip-buy-hint { color: rgba(255, 255, 255, 0.45); }
+
+  // Ant Steps
+  /deep/ .ant-steps-item-title { color: rgba(255, 255, 255, 0.65) !important; }
+  /deep/ .ant-steps-item-finish .ant-steps-item-title { color: rgba(255, 255, 255, 0.85) !important; }
+  /deep/ .ant-steps-item-process .ant-steps-item-title { color: rgba(255, 255, 255, 0.85) !important; }
+  /deep/ .ant-steps-item-tail::after { background: #303030 !important; }
+  /deep/ .ant-steps-item-finish .ant-steps-item-tail::after { background: #177ddc !important; }
+
+  // Ant Form
+  /deep/ .ant-form-item-label > label { color: rgba(255, 255, 255, 0.85); }
+  /deep/ .ant-form-item-label label { color: rgba(255, 255, 255, 0.85); }
+
+  // Ant Input / Select / InputNumber
+  /deep/ .ant-input,
+  /deep/ .ant-input-number,
+  /deep/ .ant-select-selection,
+  /deep/ .ant-input-number-input {
+    background: #1f1f1f !important;
+    border-color: #434343 !important;
+    color: rgba(255, 255, 255, 0.85) !important;
+  }
+
+  /deep/ .ant-input::placeholder,
+  /deep/ .ant-input-number-input::placeholder {
+    color: rgba(255, 255, 255, 0.3) !important;
+  }
+
+  /deep/ .ant-select-selection__placeholder,
+  /deep/ .ant-select-search__field__placeholder {
+    color: rgba(255, 255, 255, 0.3) !important;
+  }
+
+  /deep/ .ant-select-arrow { color: rgba(255, 255, 255, 0.45); }
+  /deep/ .ant-select-selection-selected-value { color: rgba(255, 255, 255, 0.85) !important; }
+  /deep/ .ant-input-number-handler-wrap { background: #1f1f1f; border-color: #434343; }
+  /deep/ .ant-input-number-handler { color: rgba(255, 255, 255, 0.45); border-color: #434343; }
+
+  // Ant Radio
+  /deep/ .ant-radio-wrapper { color: rgba(255, 255, 255, 0.85); }
+  /deep/ .ant-radio-inner { background: #1f1f1f; border-color: #434343; }
+
+  // Ant Slider
+  /deep/ .ant-slider-rail { background: #434343; }
+  /deep/ .ant-slider-track { background: #177ddc; }
+
+  // Ant Switch
+  /deep/ .ant-switch { background: #434343; }
+
+  // Ant Descriptions
+  /deep/ .ant-descriptions-bordered .ant-descriptions-item-label {
+    background: #1a1a1a;
+    color: rgba(255, 255, 255, 0.65);
+    border-color: #303030;
+  }
+
+  /deep/ .ant-descriptions-bordered .ant-descriptions-item-content {
+    background: #1f1f1f;
     color: rgba(255, 255, 255, 0.85);
+    border-color: #303030;
   }
+
+  /deep/ .ant-descriptions-bordered .ant-descriptions-view {
+    border-color: #303030;
+  }
+
+  // Ant Empty
+  /deep/ .ant-empty-description { color: rgba(255, 255, 255, 0.45); }
+  /deep/ .ant-empty-image svg { fill: rgba(255, 255, 255, 0.15); }
+
+  // Ant Alert
+  /deep/ .ant-alert-warning {
+    background: rgba(250, 173, 20, 0.08);
+    border-color: rgba(250, 173, 20, 0.2);
+  }
+
+  /deep/ .ant-alert-message { color: rgba(255, 255, 255, 0.85); }
+  /deep/ .ant-alert-description { color: rgba(255, 255, 255, 0.65); }
+
+  // Ant Input search
+  /deep/ .ant-input-search .ant-input-suffix { color: rgba(255, 255, 255, 0.45); }
+
+  // Ant autocomplete dropdown handled by global theme
+}
+</style>
+
+<style lang="less">
+.wizard-modal,
+.wizard-modal-dark {
+  .ant-modal-content {
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .ant-modal-body {
+    padding: 0;
+  }
+
+  .ant-modal-close-x {
+    width: 48px;
+    height: 48px;
+    line-height: 48px;
+    font-size: 16px;
+  }
+}
+
+.wizard-modal-dark {
+  .ant-modal-content {
+    background: #1f1f1f;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+  }
+
+  .ant-modal-close-x {
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  .wizard-title { color: rgba(255, 255, 255, 0.85) !important; }
+
+  .step-hint {
+    background: rgba(23, 125, 220, 0.1);
+    color: rgba(255, 255, 255, 0.65);
+  }
+
+  .form-hint {
+    color: rgba(255, 255, 255, 0.45);
+    a { color: #177ddc; }
+  }
+
+  .confirm-section h4 { color: rgba(255, 255, 255, 0.85); }
+  .wizard-footer { border-top-color: #303030; }
+
+  .config-summary {
+    .label { color: rgba(255, 255, 255, 0.45); }
+    .value { color: rgba(255, 255, 255, 0.85); }
+  }
+
+  .direction-hint,
+  .capital-hint,
+  .dip-buy-hint { color: rgba(255, 255, 255, 0.45) !important; }
+
+  .ai-reason-bar {
+    background: rgba(102, 126, 234, 0.1);
+    border-color: rgba(102, 126, 234, 0.2);
+    color: rgba(255, 255, 255, 0.65);
+  }
+
+  .ant-steps-item-title { color: rgba(255, 255, 255, 0.65) !important; }
+  .ant-steps-item-finish .ant-steps-item-title { color: rgba(255, 255, 255, 0.85) !important; }
+  .ant-steps-item-process .ant-steps-item-title { color: rgba(255, 255, 255, 0.85) !important; }
+  .ant-steps-item-tail::after { background: #303030 !important; }
+  .ant-steps-item-finish .ant-steps-item-tail::after { background: #177ddc !important; }
+
+  .ant-form-item-label > label,
+  .ant-form-item-label label { color: rgba(255, 255, 255, 0.85); }
+
+  .ant-input,
+  .ant-input-number,
+  .ant-select-selection,
+  .ant-input-number-input {
+    background: #1f1f1f !important;
+    border-color: #434343 !important;
+    color: rgba(255, 255, 255, 0.85) !important;
+  }
+
+  .ant-input::placeholder,
+  .ant-input-number-input::placeholder { color: rgba(255, 255, 255, 0.3) !important; }
+
+  .ant-select-selection__placeholder,
+  .ant-select-search__field__placeholder { color: rgba(255, 255, 255, 0.3) !important; }
+
+  .ant-select-arrow { color: rgba(255, 255, 255, 0.45); }
+  .ant-select-selection-selected-value { color: rgba(255, 255, 255, 0.85) !important; }
+  .ant-input-number-handler-wrap { background: #1f1f1f; border-color: #434343; }
+  .ant-input-number-handler { color: rgba(255, 255, 255, 0.45); border-color: #434343; }
+
+  .ant-radio-wrapper { color: rgba(255, 255, 255, 0.85); }
+  .ant-radio-inner { background: #1f1f1f; border-color: #434343; }
+
+  .ant-slider-rail { background: #434343; }
+  .ant-slider-track { background: #177ddc; }
+
+  .ant-switch { background: #434343; }
+
+  .ant-descriptions-bordered .ant-descriptions-item-label {
+    background: #1a1a1a;
+    color: rgba(255, 255, 255, 0.65);
+    border-color: #303030;
+  }
+
+  .ant-descriptions-bordered .ant-descriptions-item-content {
+    background: #1f1f1f;
+    color: rgba(255, 255, 255, 0.85);
+    border-color: #303030;
+  }
+
+  .ant-descriptions-bordered .ant-descriptions-view { border-color: #303030; }
+
+  .ant-alert-warning {
+    background: rgba(250, 173, 20, 0.08);
+    border-color: rgba(250, 173, 20, 0.2);
+  }
+
+  .ant-alert-message { color: rgba(255, 255, 255, 0.85); }
+  .ant-alert-description { color: rgba(255, 255, 255, 0.65); }
 }
 </style>

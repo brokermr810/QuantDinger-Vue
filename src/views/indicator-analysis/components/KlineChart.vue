@@ -43,6 +43,11 @@
           id="kline-chart-container"
           class="kline-chart-container"
         ></div>
+        <canvas
+          ref="wmCanvasRef"
+          class="qd-wm-layer"
+          :class="{ 'qd-wm-layer--dark': chartTheme === 'dark' }"
+        ></canvas>
       </div>
 
       <div v-if="loading" class="chart-overlay">
@@ -87,6 +92,7 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch, shallowRef,
 import { init, registerIndicator, registerOverlay } from 'klinecharts'
 import request from '@/utils/request'
 import { decryptCodeAuto, needsDecrypt } from '@/utils/codeDecrypt'
+import ExchangeKlineWs from '@/utils/exchangeWs'
 
 export default {
   name: 'KlineChart',
@@ -140,14 +146,70 @@ export default {
     let chartResizeObserver = null
     let chartResizeRafId = null
 
+    const wmCanvasRef = ref(null)
+    let _wmTimer = null
+    let _wmObserver = null
+
     // 实时更新设置
     const realtimeTimer = ref(null)
     const realtimeInterval = ref(5000)
     /** 避免实时请求堆叠（上一轮未完成又触发下一轮会加重闪烁） */
     const realtimeFetchInFlight = ref(false)
     let realtimeChartRafId = null
+    /** WebSocket 实时推送实例（加密市场直连交易所 WS） */
+    let wsClient = null
+    const wsActive = ref(false)
+    let _cachedExchangeId = null
+    let _exchangeIdTs = 0
+    let _realtimeGeneration = 0
     /** 价格条节流：避免父组件因 price-change 频繁重绘 */
     const lastPriceEmitSig = ref('')
+
+    /** 当前标的的价格精度（小数位数），根据K线数据自动推算 */
+    const pricePrecision = ref(2)
+
+    /**
+     * 根据一组K线数据自动推算合理的价格精度。
+     * 策略：取 close 价格中有效小数位数最多的那个，再额外 +1 保留余量，
+     * 同时确保小范围价差（如 0.15678 vs 0.15701）不被抹平。
+     */
+    const calcPricePrecision = (data) => {
+      if (!data || data.length === 0) return 2
+
+      let maxDecimals = 0
+      const sample = data.length > 50 ? data.slice(-50) : data
+      for (let i = 0; i < sample.length; i++) {
+        const vals = [sample[i].close, sample[i].open, sample[i].high, sample[i].low]
+        for (let j = 0; j < vals.length; j++) {
+          const s = String(vals[j])
+          const dot = s.indexOf('.')
+          if (dot >= 0) {
+            const dec = s.length - dot - 1
+            if (dec > maxDecimals) maxDecimals = dec
+          }
+        }
+      }
+
+      // 另一个视角：最小价差。如果 high-low 相对于价格非常小，需要更多小数位
+      let minSpread = Infinity
+      for (let i = 0; i < sample.length; i++) {
+        const spread = sample[i].high - sample[i].low
+        if (spread > 0 && spread < minSpread) minSpread = spread
+      }
+      let spreadDecimals = 2
+      if (minSpread < Infinity && minSpread > 0) {
+        // 需要多少位才能区分这个最小价差？至少让它显示为非零
+        spreadDecimals = Math.ceil(-Math.log10(minSpread)) + 2
+      }
+
+      const result = Math.max(maxDecimals, spreadDecimals, 2)
+      return Math.min(result, 10) // 上限 10 位
+    }
+
+    /** 用当前精度格式化价格 */
+    const formatPrice = (v) => {
+      return (Number(v) || 0).toFixed(pricePrecision.value)
+    }
 
     // 指标刷新锁：避免实时定时器触发时 updateIndicators 重入（Python 指标可能较慢）
     const indicatorsUpdating = ref(false)
@@ -1453,9 +1515,10 @@ registerOverlay({
         const percentStr = percentChange >= 0
           ? `+${percentChange.toFixed(2)}%`
           : `${percentChange.toFixed(2)}%`
+        const pp = pricePrecision.value
         const priceChangeStr = priceChange >= 0
-          ? `+${priceChange.toFixed(2)}`
-          : `${priceChange.toFixed(2)}`
+          ? `+${priceChange.toFixed(pp)}`
+          : `${priceChange.toFixed(pp)}`
 
         // 构建显示文本
         let displayText = `${percentStr}  ${priceChangeStr}`
@@ -1588,7 +1651,8 @@ registerOverlay({
     /** 用于判断合并后的 K 线与合并前是否一致，避免无意义的 updateData */
     const klineBarSnapshotKey = (b) => {
       if (!b) return ''
-      const q = (x) => (Number(x) || 0).toFixed(6)
+      const p = pricePrecision.value + 2
+      const q = (x) => (Number(x) || 0).toFixed(p)
       return [q(b.open), q(b.high), q(b.low), q(b.close), q(b.volume)].join('|')
     }
 
@@ -1625,12 +1689,12 @@ registerOverlay({
       let payload
       if (data.length > 1) {
         const prev = data[data.length - 2]
-        const price = last.close.toFixed(2)
+        const price = formatPrice(last.close)
         const change = ((last.close - prev.close) / prev.close) * 100
         sig = `${price}|${change.toFixed(3)}`
         payload = { price, change }
       } else {
-        const price = last.close.toFixed(2)
+        const price = formatPrice(last.close)
         sig = `${price}|0`
         payload = { price, change: 0 }
       }
@@ -1707,6 +1771,9 @@ registerOverlay({
       if (!props.symbol) return
       if (loading.value && !silent) return
 
+      // 立即停止旧的实时数据源（WS / REST），防止旧标的数据污染新数据
+      stopRealtime()
+
       loading.value = true
       error.value = null
 
@@ -1745,6 +1812,10 @@ registerOverlay({
 
         klineData.value = formattedData
         hasMoreHistory.value = true
+
+        // 根据数据自动推算价格精度并设置到图表
+        pricePrecision.value = calcPricePrecision(formattedData)
+
         const internalData = convertToInternalFormat(formattedData)
         updatePricePanel(internalData, { force: true })
 
@@ -1752,6 +1823,11 @@ registerOverlay({
           if (!chartRef.value) {
             initChart()
           } else {
+            // 设置图表精度（必须在 applyNewData 之前）
+            if (typeof chartRef.value.setPriceVolumePrecision === 'function') {
+              chartRef.value.setPriceVolumePrecision(pricePrecision.value, 0)
+            }
+
             // 确保数据格式正确
             const validData = klineData.value.filter(item =>
               item.timestamp &&
@@ -1779,8 +1855,16 @@ registerOverlay({
           }
 
           if (props.realtimeEnabled) {
-            stopRealtime()
             startRealtime()
+          }
+
+          // 如果初始数据明显不足（如美股小时线），自动补充加载历史
+          if (formattedData.length < 200 && hasMoreHistory.value) {
+            setTimeout(() => {
+              if (klineData.value.length > 0 && klineData.value.length < 200 && hasMoreHistory.value) {
+                loadMoreHistoryDataForScroll(klineData.value[0].timestamp)
+              }
+            }, 1500)
           }
         })
       } catch (err) {
@@ -2143,45 +2227,217 @@ registerOverlay({
       }
     }
 
-    // 启动实时更新
-    const startRealtime = () => {
-      // 先清除现有定时器
+    // ── REST 轮询（非加密市场 / WS 断连临时回退） ──
+    const startRestPolling = () => {
       if (realtimeTimer.value) {
         clearInterval(realtimeTimer.value)
       }
-
-      // 根据时间周期智能调整更新频率
       const intervalMap = {
-        '1m': 5000, // 1分钟K线，每5秒更新
-        '5m': 10000, // 5分钟K线，每10秒更新
-        '15m': 15000, // 15分钟K线，每15秒更新
-        '30m': 30000, // 30分钟K线，每30秒更新
-        '1H': 60000, // 1小时K线，每60秒更新
-        '4H': 300000, // 4小时K线，每5分钟更新
-        '1D': 600000, // 日线，每10分钟更新
-        '1W': 1800000 // 周线，每30分钟更新
+        '1m': 5000,
+        '5m': 10000,
+        '15m': 15000,
+        '30m': 30000,
+        '1H': 60000,
+        '4H': 300000,
+        '1D': 600000,
+        '1W': 1800000
       }
-      // 过短的轮询会叠请求、放大闪烁；最短约 2s，长周期用较大 base（并封顶避免过久不更新）
       const base = intervalMap[props.timeframe] || 10000
       realtimeInterval.value = Math.min(Math.max(base, 2000), 15000)
 
-      // 如果启用了实时更新且有选中的标的
       if (props.realtimeEnabled && props.symbol && klineData.value.length > 0) {
         realtimeTimer.value = setInterval(() => {
-          // 只在不在加载中且有现有数据时进行增量更新
           if (!loading.value && props.symbol && klineData.value && klineData.value.length > 0) {
-            updateKlineRealtime() // 增量更新K线
+            updateKlineRealtime()
           }
         }, realtimeInterval.value)
       }
     }
 
-    // 停止实时更新
-    const stopRealtime = () => {
+    const stopRestPolling = () => {
       if (realtimeTimer.value) {
         clearInterval(realtimeTimer.value)
         realtimeTimer.value = null
       }
+    }
+
+    // ── WebSocket 实时推送处理（高性能路径） ──
+
+    // 待刷新的最新 bar 缓存：WS tick 高频到达时只保留最新值，由 rAF 合并刷新
+    let pendingWsBar = null
+    let wsTickRafId = null
+
+    const flushWsTick = () => {
+      wsTickRafId = null
+      if (!wsActive.value) { pendingWsBar = null; return }
+      const bar = pendingWsBar
+      if (!bar || !chartRef.value) return
+      pendingWsBar = null
+      scheduleRealtimeChartBarUpdate(bar)
+    }
+
+    const handleWsTick = (bar) => {
+      // WS 关闭前可能还有残留消息，确认 wsActive 才处理
+      if (!wsActive.value) return
+      const arr = klineData.value
+      if (!arr || arr.length === 0) return
+
+      const lastBar = arr[arr.length - 1]
+
+      if (bar.timestamp === lastBar.timestamp) {
+        // 同一根K线内更新：原地修改最后一个元素，避免整个数组拷贝
+        const newHigh = Math.max(lastBar.high, bar.high)
+        const newLow = Math.min(lastBar.low, bar.low)
+        if (lastBar.close === bar.close &&
+            lastBar.high === newHigh &&
+            lastBar.low === newLow &&
+            lastBar.volume === bar.volume) {
+          return // 数值无变化，跳过
+        }
+        const merged = {
+          timestamp: lastBar.timestamp,
+          open: lastBar.open,
+          high: newHigh,
+          low: newLow,
+          close: bar.close,
+          volume: bar.volume
+        }
+        arr[arr.length - 1] = merged
+        // shallowRef 需要赋值新引用触发响应式；slice 只创建浅拷贝引用数组，不拷贝对象
+        klineData.value = arr.slice()
+
+        // 直接用最后两根算价格，避免 convertToInternalFormat 遍历全部 500 根
+        updatePricePanelFromLastBars(arr)
+
+        // 合并到 rAF 再刷新图表（如果 WS tick 1秒来多次，只刷最后一次）
+        pendingWsBar = merged
+        if (wsTickRafId == null) {
+          wsTickRafId = requestAnimationFrame(flushWsTick)
+        }
+      } else if (bar.timestamp > lastBar.timestamp) {
+        // 新K线诞生
+        arr.push(bar)
+        if (arr.length > 500) {
+          arr.splice(0, arr.length - 500)
+        }
+        klineData.value = arr.slice()
+
+        updatePricePanelFromLastBars(arr, true)
+
+        if (chartRef.value && typeof chartRef.value.applyMoreData === 'function') {
+          chartRef.value.applyMoreData([bar])
+        } else if (chartRef.value) {
+          chartRef.value.applyNewData(klineData.value)
+        }
+        // 新K线产生时立即刷新指标
+        maybeUpdateIndicators(true)
+      }
+    }
+
+    const handleWsNewBar = (_bar) => {
+      // newBar 信号在 handleWsTick 的 timestamp 分支中已触发 maybeUpdateIndicators
+      // 此回调保留作为语义钩子，不再重复触发
+    }
+
+    /** 精简版价格面板更新：只用最后两根 bar，不遍历全量数据 */
+    const updatePricePanelFromLastBars = (arr, force) => {
+      if (!arr || arr.length === 0) return
+      const last = arr[arr.length - 1]
+      let payload, sig
+      if (arr.length > 1) {
+        const prev = arr[arr.length - 2]
+        const price = formatPrice(last.close)
+        const change = ((last.close - prev.close) / prev.close) * 100
+        sig = `${price}|${change.toFixed(3)}`
+        payload = { price, change }
+      } else {
+        const price = formatPrice(last.close)
+        sig = `${price}|0`
+        payload = { price, change: 0 }
+      }
+      if (!force && sig === lastPriceEmitSig.value) return
+      lastPriceEmitSig.value = sig
+      emit('price-change', payload)
+    }
+
+    // ── WS 断连/重连回调 ──
+    const handleWsReconnecting = () => {
+      // WS 断开但正在重连 → 临时启动 REST 轮询保持数据流
+      startRestPolling()
+    }
+
+    const handleWsReconnected = () => {
+      // WS 恢复 → 立即停止 REST 轮询，避免冗余 HTTP 请求
+      stopRestPolling()
+    }
+
+    const handleWsError = () => {
+      wsActive.value = false
+      startRestPolling()
+    }
+
+    const isCryptoMarket = () => {
+      const m = (props.market || '').toLowerCase()
+      return m === 'crypto' || m === '' || m === 'cryptocurrency'
+    }
+
+    const _fetchExchangeId = async () => {
+      const now = Date.now()
+      if (_cachedExchangeId && (now - _exchangeIdTs) < 300000) return _cachedExchangeId
+      try {
+        const res = await request({ url: '/api/settings/public-config', method: 'get' })
+        if (res && res.data && res.data.ccxt_default_exchange) {
+          _cachedExchangeId = res.data.ccxt_default_exchange
+          _exchangeIdTs = now
+        }
+      } catch (_) { /* keep cached or null */ }
+      return _cachedExchangeId || 'binance'
+    }
+
+    // 启动实时更新
+    const startRealtime = async () => {
+      stopRealtime()
+      const gen = ++_realtimeGeneration
+
+      if (!props.realtimeEnabled || !props.symbol || klineData.value.length === 0) return
+
+      if (isCryptoMarket()) {
+        try {
+          const exchangeId = await _fetchExchangeId()
+          if (gen !== _realtimeGeneration) return
+          if (!wsClient) {
+            wsClient = new ExchangeKlineWs()
+          }
+          wsClient.connect(props.symbol, props.timeframe, {
+            onTick: handleWsTick,
+            onNewBar: handleWsNewBar,
+            onError: handleWsError,
+            onReconnecting: handleWsReconnecting,
+            onReconnected: handleWsReconnected
+          }, exchangeId)
+          wsActive.value = true
+        } catch (_) {
+          if (gen !== _realtimeGeneration) return
+          wsActive.value = false
+          startRestPolling()
+        }
+      } else {
+        startRestPolling()
+      }
+    }
+
+    // 停止实时更新
+    const stopRealtime = () => {
+      stopRestPolling()
+      if (wsTickRafId != null) {
+        cancelAnimationFrame(wsTickRafId)
+        wsTickRafId = null
+      }
+      pendingWsBar = null
+      if (wsClient) {
+        wsClient.disconnect()
+      }
+      wsActive.value = false
     }
 
     // --- 图表初始化函数 ---
@@ -2263,8 +2519,14 @@ registerOverlay({
           }
         }
 
+        // 设置价格精度（在 applyNewData 之前）
+        if (typeof chartRef.value.setPriceVolumePrecision === 'function') {
+          chartRef.value.setPriceVolumePrecision(pricePrecision.value, 0)
+        }
+
         // 设置主题样式
         updateChartTheme()
+        nextTick(() => _ensureWmLayer())
 
         // 监听覆盖物创建完成事件，自动退出绘制模式
         if (chartRef.value && typeof chartRef.value.subscribeAction === 'function') {
@@ -2391,11 +2653,14 @@ registerOverlay({
               }
 
               // 当滚动到最左侧（索引接近0或小于等于5）时触发加载
-              // 只有在用户主动向左滚动时才触发（lastVisibleFrom > data.from 表示向左滚动）
               // 【关键】同时检查 loadingHistory.value 和 loadingHistoryPromise，确保没有正在进行的请求
               if (data.from <= 5 && !loadingHistory.value && !loadingHistoryPromise && hasMoreHistory.value && chartInitialized.value) {
-                // 检查是否是用户主动向左滚动（避免初始化时触发）
-                if (lastVisibleFrom !== null && lastVisibleFrom > data.from) {
+                // 两种情况都应触发：
+                // 1. 用户主动向左滚动（lastVisibleFrom > data.from）
+                // 2. from 已经在 0 附近但还有更多历史数据（数据量太少导致初始就在最左侧）
+                const isScrollingLeft = lastVisibleFrom !== null && lastVisibleFrom > data.from
+                const isAlreadyAtEdge = data.from <= 0
+                if (isScrollingLeft || isAlreadyAtEdge) {
                   if (klineData.value.length > 0) {
                     const earliestTimestamp = klineData.value[0].timestamp
                     await loadMoreHistoryDataForScroll(earliestTimestamp)
@@ -2511,12 +2776,13 @@ registerOverlay({
             ],
             values: (kLineData) => {
               const d = new Date(kLineData.timestamp)
+              const p = pricePrecision.value
               return [
                 `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()} ${d.getHours()}:${d.getMinutes()}`,
-                kLineData.open.toFixed(2),
-                kLineData.high.toFixed(2),
-                kLineData.low.toFixed(2),
-                kLineData.close.toFixed(2),
+                kLineData.open.toFixed(p),
+                kLineData.high.toFixed(p),
+                kLineData.low.toFixed(p),
+                kLineData.close.toFixed(p),
                 kLineData.volume.toFixed(0)
               ]
             }
@@ -2578,7 +2844,8 @@ registerOverlay({
     }
 
     // --- 注册自定义指标辅助函数 ---
-    const registerCustomIndicator = (name, calcFunc, figures, calcParams = [], precision = 2, shouldOverlay = false) => {
+    const registerCustomIndicator = (name, calcFunc, figures, calcParams = [], precision = -1, shouldOverlay = false) => {
+      if (precision < 0) precision = pricePrecision.value
       try {
         // KLineChart v9 使用 series: 'price' 来标识主图指标
         const indicatorConfig = {
@@ -3192,7 +3459,7 @@ registerOverlay({
                   { key: 'lower', title: `下轨(${length},${mult})`, type: 'line' }
                 ],
                 [length, mult], // calcParams
-                2, // precision
+                -1, // precision: 使用动态精度
                 true // shouldOverlay: true 表示主图指标
               )
 
@@ -3574,12 +3841,7 @@ registerOverlay({
         updateChartTheme()
         updateIndicators()
       }
-    })
-
-    watch(() => props.symbol, () => {
-      if (props.symbol) {
-        loadKlineData()
-      }
+      nextTick(() => _ensureWmLayer())
     })
 
     watch(() => props.market, () => {
@@ -3591,11 +3853,6 @@ registerOverlay({
     watch(() => props.timeframe, () => {
       if (props.symbol) {
         loadKlineData()
-      }
-      // 时间周期变化时，重新启动实时更新（如果已启用）
-      if (props.realtimeEnabled) {
-        stopRealtime()
-        startRealtime()
       }
     })
 
@@ -3657,14 +3914,93 @@ registerOverlay({
                 initChart()
               }
             }
+            _ensureWmLayer()
           })
         })
         chartResizeObserver.observe(el)
       })
+
+      nextTick(() => {
+        _ensureWmLayer()
+        _startWmGuard()
+      })
     })
+
+    // ── Watermark (multi-layer, tamper-resistant) ──
+    const _wmText = [81, 117, 97, 110, 116, 68, 105, 110, 103, 101, 114].map(c => String.fromCharCode(c)).join('')
+    const _wmSub = [113, 117, 97, 110, 116, 100, 105, 110, 103, 101, 114, 46, 99, 111, 109].map(c => String.fromCharCode(c)).join('')
+
+    const _paintWmCanvas = () => {
+      const cvs = wmCanvasRef.value
+      if (!cvs) return
+      const parent = cvs.parentElement
+      if (!parent) return
+      const w = parent.clientWidth
+      const h = parent.clientHeight
+      if (w === 0 || h === 0) return
+      const dpr = window.devicePixelRatio || 1
+      cvs.width = w * dpr
+      cvs.height = h * dpr
+      cvs.style.width = w + 'px'
+      cvs.style.height = h + 'px'
+      const ctx = cvs.getContext('2d')
+      if (!ctx) return
+      ctx.clearRect(0, 0, cvs.width, cvs.height)
+      ctx.save()
+      ctx.scale(dpr, dpr)
+      const isDark = chartTheme.value === 'dark'
+      // main brand
+      ctx.font = 'bold 18px "Segoe UI", Helvetica, Arial, sans-serif'
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'
+      ctx.textBaseline = 'bottom'
+      ctx.fillText(_wmText, 12, h - 24)
+      // sub domain
+      ctx.font = '11px "Segoe UI", Helvetica, Arial, sans-serif'
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.045)'
+      ctx.fillText(_wmSub, 12, h - 10)
+      // tiled repeat across chart
+      ctx.font = '13px "Segoe UI", Helvetica, Arial, sans-serif'
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.022)'
+      ctx.save()
+      ctx.rotate(-0.35)
+      for (let y = 0; y < h + 200; y += 140) {
+        for (let x = -200; x < w + 200; x += 260) {
+          ctx.fillText(_wmText, x, y)
+        }
+      }
+      ctx.restore()
+      ctx.restore()
+    }
+
+    const _ensureWmLayer = () => {
+      const cvs = wmCanvasRef.value
+      if (!cvs) return
+      // force visibility
+      cvs.style.display = 'block'
+      cvs.style.opacity = '1'
+      cvs.style.visibility = 'visible'
+      cvs.style.pointerEvents = 'none'
+      _paintWmCanvas()
+    }
+
+    const _startWmGuard = () => {
+      if (_wmTimer) clearInterval(_wmTimer)
+      _wmTimer = setInterval(_ensureWmLayer, 3000)
+
+      if (typeof MutationObserver !== 'undefined' && wmCanvasRef.value) {
+        if (_wmObserver) _wmObserver.disconnect()
+        _wmObserver = new MutationObserver(() => { _ensureWmLayer() })
+        _wmObserver.observe(wmCanvasRef.value, { attributes: true, attributeFilter: ['style', 'class'] })
+        const parent = wmCanvasRef.value.parentElement
+        if (parent) {
+          _wmObserver.observe(parent, { childList: true })
+        }
+      }
+    }
 
     onBeforeUnmount(() => {
       stopRealtime()
+      wsClient = null
       if (realtimeChartRafId != null) {
         cancelAnimationFrame(realtimeChartRafId)
         realtimeChartRafId = null
@@ -3677,6 +4013,8 @@ registerOverlay({
         chartResizeObserver.disconnect()
         chartResizeObserver = null
       }
+      if (_wmTimer) { clearInterval(_wmTimer); _wmTimer = null }
+      if (_wmObserver) { _wmObserver.disconnect(); _wmObserver = null }
       if (chartRef.value) {
         chartRef.value.destroy()
         chartRef.value = null
@@ -3692,6 +4030,7 @@ registerOverlay({
       chartRef,
       chartTheme,
       themeConfig,
+      wmCanvasRef,
       getIndicatorColor,
       handleRetry,
       loadingPython,
@@ -3853,8 +4192,22 @@ registerOverlay({
   flex: 1;
   display: flex;
   flex-direction: column;
-  min-width: 0; /* 防止 flex 子元素溢出 */
+  min-width: 0;
   overflow: hidden;
+  position: relative;
+}
+
+.qd-wm-layer {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 8 !important;
+  pointer-events: none !important;
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 .chart-left.theme-dark .indicator-toolbar {

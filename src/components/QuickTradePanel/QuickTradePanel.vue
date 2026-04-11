@@ -281,7 +281,6 @@
             </div>
             <template v-if="currentPositions.length > 0">
               <div v-if="isSwapMode" class="qt-close-scope qt-close-scope-global">
-                <div class="qt-label qt-label-close-scope">{{ $t('quickTrade.closeScopeLabel') }}</div>
                 <a-radio-group v-model="closeScope" size="small" class="qt-close-scope-radio">
                   <a-radio-button value="full">{{ $t('quickTrade.closeScopeFull') }}</a-radio-button>
                   <a-radio-button value="system_tracked">{{ $t('quickTrade.closeScopeSystem') }}</a-radio-button>

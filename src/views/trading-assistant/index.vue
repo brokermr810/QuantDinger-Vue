@@ -685,104 +685,9 @@
                         <span>{{ $t('trading-assistant.form.sectionStrategyMarket') }}</span>
                         <span class="section-block-desc">{{ $t('trading-assistant.form.sectionStrategyMarketDesc') }}</span>
                       </div>
-                      <!-- 策略类型选择 -->
-                      <a-form-item :label="$t('trading-assistant.form.strategyType')">
-                        <a-radio-group
-                          v-decorator="['cs_strategy_type', { initialValue: 'single' }]"
-                          @change="handleStrategyTypeChange">
-                          <a-radio value="single">{{ $t('trading-assistant.form.strategyTypeSingle') }}</a-radio>
-                          <a-radio value="cross_sectional">{{ $t('trading-assistant.form.strategyTypeCrossSectional') }}</a-radio>
-                        </a-radio-group>
-                        <div class="form-item-hint">
-                          {{ $t('trading-assistant.form.strategyTypeHint') }}
-                        </div>
-                      </a-form-item>
                     </div>
 
-                    <!-- 截面策略配置 -->
-                    <template v-if="form.getFieldValue('cs_strategy_type') === 'cross_sectional'">
-                      <a-form-item :label="$t('trading-assistant.form.symbolList')">
-                        <a-select
-                          v-model="crossSectionalSymbols"
-                          mode="multiple"
-                          :placeholder="$t('trading-assistant.placeholders.selectSymbols')"
-                          show-search
-                          :filter-option="filterWatchlistOptionWithAdd"
-                          :loading="loadingWatchlist"
-                          @change="handleCrossSectionalSymbolChange"
-                          :getPopupContainer="(triggerNode) => triggerNode.parentNode"
-                          :maxTagCount="5">
-                          <a-select-option
-                            v-for="item in watchlist"
-                            :key="`${item.market}:${item.symbol}`"
-                            :value="`${item.market}:${item.symbol}`">
-                            <div class="symbol-option">
-                              <a-tag :color="getMarketColor(item.market)" style="margin-right: 8px; margin-bottom: 0;">
-                                {{ item.market }}
-                              </a-tag>
-                              <span class="symbol-name">{{ item.symbol }}</span>
-                              <span v-if="item.name" class="symbol-name-extra">{{ item.name }}</span>
-                            </div>
-                          </a-select-option>
-                          <a-select-option key="__add_symbol_option__" value="__add_symbol_option__" class="add-symbol-option">
-                            <div style="width: 100%; text-align: center; padding: 4px 0; color: #1890ff; cursor: pointer;">
-                              <a-icon type="plus" style="margin-right: 4px;" />
-                              <span>{{ $t('trading-assistant.form.addSymbol') }}</span>
-                            </div>
-                          </a-select-option>
-                        </a-select>
-                        <div class="form-item-hint">
-                          {{ $t('trading-assistant.form.symbolListHint') }}
-                        </div>
-                      </a-form-item>
-
-                      <a-row :gutter="16">
-                        <a-col :xs="24" :sm="12">
-                          <a-form-item :label="$t('trading-assistant.form.portfolioSize')">
-                            <a-input-number
-                              v-decorator="['portfolio_size', { initialValue: 10, rules: [{ required: true, message: $t('trading-assistant.validation.portfolioSizeRequired') }] }]"
-                              :min="1"
-                              :max="100"
-                              :step="1"
-                              style="width: 100%" />
-                            <div class="form-item-hint">
-                              {{ $t('trading-assistant.form.portfolioSizeHint') }}
-                            </div>
-                          </a-form-item>
-                        </a-col>
-                        <a-col :xs="24" :sm="12">
-                          <a-form-item :label="$t('trading-assistant.form.longRatio')">
-                            <a-input-number
-                              v-decorator="['long_ratio', { initialValue: 0.5, rules: [{ required: true, message: $t('trading-assistant.validation.longRatioRequired') }] }]"
-                              :min="0"
-                              :max="1"
-                              :step="0.1"
-                              :precision="2"
-                              style="width: 100%" />
-                            <div class="form-item-hint">
-                              {{ $t('trading-assistant.form.longRatioHint') }}
-                            </div>
-                          </a-form-item>
-                        </a-col>
-                      </a-row>
-
-                      <a-form-item :label="$t('trading-assistant.form.rebalanceFrequency')">
-                        <a-select
-                          v-decorator="['rebalance_frequency', { initialValue: 'daily' }]"
-                          style="width: 100%">
-                          <a-select-option value="daily">{{ $t('trading-assistant.form.rebalanceDaily') }}</a-select-option>
-                          <a-select-option value="weekly">{{ $t('trading-assistant.form.rebalanceWeekly') }}</a-select-option>
-                          <a-select-option value="monthly">{{ $t('trading-assistant.form.rebalanceMonthly') }}</a-select-option>
-                        </a-select>
-                        <div class="form-item-hint">
-                          {{ $t('trading-assistant.form.rebalanceFrequencyHint') }}
-                        </div>
-                      </a-form-item>
-                    </template>
-
-                    <!-- 单标的策略：原有的标的选择 -->
                     <a-form-item
-                      v-if="form.getFieldValue('cs_strategy_type') !== 'cross_sectional'"
                       :label="isEditMode ? $t('trading-assistant.form.symbol') : $t('trading-assistant.form.symbols')">
                       <!-- 编辑模式：单选 -->
                       <a-select
@@ -1099,22 +1004,9 @@
 
                       <a-form-item :label="$t('trading-assistant.form.executionMode')" class="compact-form-item">
                         <a-input
-                          v-decorator="['execution_mode', { initialValue: 'signal' }]"
+                          v-decorator="['execution_mode', { initialValue: 'live' }]"
                           style="display: none;" />
                         <div class="execution-mode-cards">
-                          <div
-                            :class="['execution-mode-card', { active: executionModeUi === 'signal' }]"
-                            @click="setExecutionModeUi('signal')">
-                            <div class="execution-mode-card-icon signal">
-                              <a-icon type="notification" />
-                            </div>
-                            <div class="execution-mode-card-body">
-                              <div class="execution-mode-card-title">{{ $t('trading-assistant.form.executionModeSignal') }}</div>
-                              <div class="execution-mode-card-desc">{{ $t('trading-assistant.form.executionModeSignalDesc') }}</div>
-                            </div>
-                            <a-icon v-if="executionModeUi === 'signal'" type="check-circle" theme="filled" class="execution-mode-card-check" />
-                          </div>
-
                           <div
                             :class="['execution-mode-card', 'live-card', { active: executionModeUi === 'live', disabled: !canUseLiveTrading }]"
                             @click="canUseLiveTrading && setExecutionModeUi('live')">
@@ -1133,6 +1025,19 @@
                               theme="filled"
                               class="execution-mode-card-check" />
                           </div>
+
+                          <div
+                            :class="['execution-mode-card', { active: executionModeUi === 'signal' }]"
+                            @click="setExecutionModeUi('signal')">
+                            <div class="execution-mode-card-icon signal">
+                              <a-icon type="notification" />
+                            </div>
+                            <div class="execution-mode-card-body">
+                              <div class="execution-mode-card-title">{{ $t('trading-assistant.form.executionModeSignal') }}</div>
+                              <div class="execution-mode-card-desc">{{ $t('trading-assistant.form.executionModeSignalDesc') }}</div>
+                            </div>
+                            <a-icon v-if="executionModeUi === 'signal'" type="check-circle" theme="filled" class="execution-mode-card-check" />
+                          </div>
                         </div>
                         <div v-if="!canUseLiveTrading" class="form-item-hint execution-warn-text">
                           {{ $t('trading-assistant.form.liveTradingNotSupportedHint') }}
@@ -1148,56 +1053,63 @@
                         :description="$t('trading-assistant.liveDisclaimer.content')" />
                     </div>
 
-                    <div class="execution-section-card">
-                      <div class="section-block-title">
-                        <span>{{ $t('trading-assistant.form.notificationSectionTitle') }}</span>
-                        <span class="section-block-desc">{{ $t('trading-assistant.form.notificationSectionDesc') }}</span>
+                    <div class="execution-section-card execution-section-card--collapsible">
+                      <div class="section-block-title section-block-title--toggle" @click="notifySectionExpanded = !notifySectionExpanded">
+                        <span>
+                          <a-icon :type="notifySectionExpanded ? 'down' : 'right'" class="collapse-arrow" />
+                          {{ $t('trading-assistant.form.notificationSectionTitle') }}
+                        </span>
+                        <span class="section-block-desc">
+                          {{ notifySectionExpanded ? '' : $t('trading-assistant.form.notificationSectionDesc') }}
+                        </span>
                       </div>
 
-                      <a-form-item :label="$t('trading-assistant.form.notifyChannels')" class="compact-form-item">
-                        <a-checkbox-group
-                          v-decorator="['notify_channels', { initialValue: ['browser'] }]"
-                          class="notify-channel-grid"
-                          @change="onNotifyChannelsChange">
-                          <a-checkbox value="browser">{{ $t('trading-assistant.notify.browser') }}</a-checkbox>
-                          <a-checkbox value="email">{{ $t('trading-assistant.notify.email') }}</a-checkbox>
-                          <a-checkbox value="telegram">{{ $t('trading-assistant.notify.telegram') }}</a-checkbox>
-                          <a-checkbox value="discord">{{ $t('trading-assistant.notify.discord') }}</a-checkbox>
-                          <a-checkbox value="webhook">{{ $t('trading-assistant.notify.webhook') }}</a-checkbox>
-                          <a-checkbox value="phone">{{ $t('trading-assistant.notify.phone') }}</a-checkbox>
-                        </a-checkbox-group>
-                        <div class="form-item-hint">{{ $t('trading-assistant.form.notifyChannelsHint') }}</div>
-                      </a-form-item>
+                      <div v-show="notifySectionExpanded" class="collapsible-body">
+                        <a-form-item :label="$t('trading-assistant.form.notifyChannels')" class="compact-form-item">
+                          <a-checkbox-group
+                            v-decorator="['notify_channels', { initialValue: ['browser'] }]"
+                            class="notify-channel-grid"
+                            @change="onNotifyChannelsChange">
+                            <a-checkbox value="browser">{{ $t('trading-assistant.notify.browser') }}</a-checkbox>
+                            <a-checkbox value="email">{{ $t('trading-assistant.notify.email') }}</a-checkbox>
+                            <a-checkbox value="telegram">{{ $t('trading-assistant.notify.telegram') }}</a-checkbox>
+                            <a-checkbox value="discord">{{ $t('trading-assistant.notify.discord') }}</a-checkbox>
+                            <a-checkbox value="webhook">{{ $t('trading-assistant.notify.webhook') }}</a-checkbox>
+                            <a-checkbox value="phone">{{ $t('trading-assistant.notify.phone') }}</a-checkbox>
+                          </a-checkbox-group>
+                          <div class="form-item-hint">{{ $t('trading-assistant.form.notifyChannelsHint') }}</div>
+                        </a-form-item>
 
-                      <a-alert
-                        v-if="unconfiguredChannels.length > 0"
-                        type="warning"
-                        showIcon
-                        class="section-inline-alert">
-                        <template #message>
-                          <span>
-                            {{ $t('trading-assistant.form.notificationConfigMissing', { channels: unconfiguredChannels.join(', ') }) }}
-                            <router-link to="/profile" style="margin-left: 8px">
-                              <a-icon type="setting" /> {{ $t('trading-assistant.form.goToProfile') }}
-                            </router-link>
-                          </span>
-                        </template>
-                      </a-alert>
+                        <a-alert
+                          v-if="unconfiguredChannels.length > 0"
+                          type="warning"
+                          showIcon
+                          class="section-inline-alert">
+                          <template #message>
+                            <span>
+                              {{ $t('trading-assistant.form.notificationConfigMissing', { channels: unconfiguredChannels.join(', ') }) }}
+                              <router-link to="/profile" style="margin-left: 8px">
+                                <a-icon type="setting" /> {{ $t('trading-assistant.form.goToProfile') }}
+                              </router-link>
+                            </span>
+                          </template>
+                        </a-alert>
 
-                      <a-alert
-                        v-else-if="notifyChannelsUi.length > 0 && !notifyChannelsUi.includes('browser') || (notifyChannelsUi.length > 1)"
-                        type="info"
-                        showIcon
-                        class="section-inline-alert">
-                        <template #message>
-                          <span>
-                            {{ $t('trading-assistant.form.notificationFromProfile') }}
-                            <router-link to="/profile" style="margin-left: 8px">
-                              <a-icon type="setting" /> {{ $t('trading-assistant.form.goToProfile') }}
-                            </router-link>
-                          </span>
-                        </template>
-                      </a-alert>
+                        <a-alert
+                          v-else-if="notifyChannelsUi.length > 0 && !notifyChannelsUi.includes('browser') || (notifyChannelsUi.length > 1)"
+                          type="info"
+                          showIcon
+                          class="section-inline-alert">
+                          <template #message>
+                            <span>
+                              {{ $t('trading-assistant.form.notificationFromProfile') }}
+                              <router-link to="/profile" style="margin-left: 8px">
+                                <a-icon type="setting" /> {{ $t('trading-assistant.form.goToProfile') }}
+                              </router-link>
+                            </span>
+                          </template>
+                        </a-alert>
+                      </div>
                     </div>
 
                     <div v-if="executionModeUi === 'live' && canUseLiveTrading" class="execution-section-card">
@@ -1710,16 +1622,16 @@ export default {
       if (this.isScriptStrategiesOnlyPage) return 'script'
       return 'all'
     },
-    /** 按路由过滤：策略与实盘页不展示脚本策略；脚本专页只展示脚本策略 */
+    /** 按路由过滤：策略与实盘页不展示脚本/机器人策略；脚本专页只展示脚本策略 */
     strategiesForPage () {
       const list = this.strategies || []
       if (this.isIndicatorSignalOnlyPage) {
-        return list.filter(s => s.strategy_mode !== 'script')
+        return list.filter(s => s.strategy_mode !== 'script' && s.strategy_mode !== 'bot')
       }
       if (this.isScriptStrategiesOnlyPage) {
         return list.filter(s => s.strategy_mode === 'script')
       }
-      return list
+      return list.filter(s => s.strategy_mode !== 'bot')
     },
     // 策略分组显示
     groupedStrategies () {
@@ -1890,8 +1802,9 @@ export default {
       aiFilterEnabledUi: false,
       isEditMode: false, // 是否为编辑模式
       supportedIPs: [], // 白名单IP列表
-      executionModeUi: 'signal',
+      executionModeUi: 'live',
       liveDisclaimerAckUi: false,
+      notifySectionExpanded: false,
       notifyChannelsUi: ['browser'],
       // User's notification settings from profile
       userNotificationSettings: {
@@ -2673,7 +2586,7 @@ export default {
       this.currentBrokerId = 'ibkr'
       this.selectedIndicator = null
       this.connectionTestResult = null
-      this.executionModeUi = 'signal'
+      this.executionModeUi = 'live'
       this.notifyChannelsUi = ['browser']
       this.saveCredentialUi = false
       this.aiFilterEnabledUi = false
@@ -2912,37 +2825,6 @@ export default {
         const tc = strategy.trading_config || {}
 
         // 加载截面策略配置
-        const strategyType = tc.strategy_type || strategy.strategy_type || 'single'
-        if (strategyType === 'cross_sectional') {
-          this.form.setFieldsValue({
-            cs_strategy_type: 'cross_sectional',
-            portfolio_size: tc.portfolio_size || 10,
-            long_ratio: tc.long_ratio || 0.5,
-            rebalance_frequency: tc.rebalance_frequency || 'daily'
-          })
-          // 加载标的列表
-          if (tc.symbol_list && Array.isArray(tc.symbol_list)) {
-            this.crossSectionalSymbols = tc.symbol_list
-          } else if (strategy.symbol_list) {
-            // 如果trading_config中没有，尝试从主表字段读取
-            try {
-              const symbolList = typeof strategy.symbol_list === 'string' ? JSON.parse(strategy.symbol_list) : strategy.symbol_list
-              if (Array.isArray(symbolList)) {
-                this.crossSectionalSymbols = symbolList
-              }
-            } catch (e) {
-              this.crossSectionalSymbols = []
-            }
-          } else {
-            this.crossSectionalSymbols = []
-          }
-        } else {
-          this.form.setFieldsValue({
-            cs_strategy_type: 'single'
-          })
-          this.crossSectionalSymbols = []
-        }
-
         // Backward compatible: show symbol as "Market:SYMBOL" for watchlist dropdown
         const rawSymbol = tc.symbol
         const symbolValue = (typeof rawSymbol === 'string' && rawSymbol.includes(':'))
@@ -3045,7 +2927,7 @@ export default {
       this.lastAutoScriptStrategyName = ''
       this.scriptTemplateKeyForPayload = ''
       this.aiFilterEnabledUi = false
-      this.executionModeUi = 'signal'
+      this.executionModeUi = 'live'
       this.liveDisclaimerAckUi = false
 
       this.form.resetFields()
@@ -3727,17 +3609,9 @@ export default {
           if (err) return
 
           if (!this.isEditMode) {
-            const strategyType = this.form.getFieldValue('cs_strategy_type') || 'single'
-            if (strategyType === 'cross_sectional') {
-              if (!this.crossSectionalSymbols || this.crossSectionalSymbols.length === 0) {
-                this.$message.warning(this.$t('trading-assistant.validation.symbolsRequired'))
-                return
-              }
-            } else {
-              if (!this.selectedSymbols || this.selectedSymbols.length === 0) {
-                this.$message.warning(this.$t('trading-assistant.validation.symbolsRequired'))
-                return
-              }
+            if (!this.selectedSymbols || this.selectedSymbols.length === 0) {
+              this.$message.warning(this.$t('trading-assistant.validation.symbolsRequired'))
+              return
             }
           }
 
@@ -3984,12 +3858,7 @@ export default {
                 enable_ai_filter: enableAiFilter,
                 // 指标参数（外部传递）
                 indicator_params: this.indicatorParamValues,
-                // 截面策略配置
-                strategy_type: values.cs_strategy_type || 'single',
-                symbol_list: values.cs_strategy_type === 'cross_sectional' ? this.crossSectionalSymbols : undefined,
-                portfolio_size: values.cs_strategy_type === 'cross_sectional' ? (values.portfolio_size || 10) : undefined,
-                long_ratio: values.cs_strategy_type === 'cross_sectional' ? (values.long_ratio || 0.5) : undefined,
-                rebalance_frequency: values.cs_strategy_type === 'cross_sectional' ? (values.rebalance_frequency || 'daily') : undefined
+                strategy_type: 'single'
               }
             }
 
@@ -4005,35 +3874,17 @@ export default {
               basePayload.trading_config.symbol = parsedSymbol
               res = await updateStrategy(this.editingStrategy.id, basePayload)
             } else {
-              // 创建模式：批量创建策略或截面策略
               basePayload.user_id = 1
               basePayload.strategy_type = 'IndicatorStrategy'
-
-              // 如果是截面策略，只创建一个策略（使用 createStrategy）
-              if (values.cs_strategy_type === 'cross_sectional') {
-                // 截面策略：只创建一个策略，标的列表存储在 trading_config 中
-                basePayload.strategy_type = 'IndicatorStrategy' // 保持为 IndicatorStrategy，截面类型在 trading_config 中
-                // 截面策略不需要设置 symbol，因为它是多标的的
-                basePayload.trading_config.symbol = null
-                // 使用 createStrategy 创建单个策略
-                res = await createStrategy(basePayload)
-              } else {
-                // 单标的策略：批量创建多个策略（每个标的一个策略）
-                basePayload.symbols = this.selectedSymbols // 多币种数组
-                res = await batchCreateStrategies(basePayload)
-              }
+              basePayload.symbols = this.selectedSymbols
+              res = await batchCreateStrategies(basePayload)
             }
 
             if (res.code === 1) {
               if (this.isEditMode) {
                 this.$message.success(this.$t('trading-assistant.messages.updateSuccess'))
               } else {
-                // 根据策略类型计算创建的策略数量
-                const strategyType = values.cs_strategy_type || 'single'
-                const symbolCount = strategyType === 'cross_sectional'
-                  ? this.crossSectionalSymbols.length
-                  : this.selectedSymbols.length
-                const totalCreated = res.data?.total_created || symbolCount
+                const totalCreated = res.data?.total_created || this.selectedSymbols.length
                 this.$message.success(this.$t('trading-assistant.messages.batchCreateSuccess', { count: totalCreated }))
               }
               // Credentials are managed in Profile → Exchange Config; no inline save needed.
@@ -6305,6 +6156,29 @@ export default {
   background: #fafcff;
   border: 1px solid rgba(24, 144, 255, 0.12);
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+
+  &--collapsible {
+    padding-bottom: 12px;
+
+    .section-block-title--toggle {
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.2s;
+      margin-bottom: 0;
+
+      &:hover { color: #1890ff; }
+    }
+
+    .collapse-arrow {
+      font-size: 12px;
+      margin-right: 6px;
+      transition: transform 0.25s;
+    }
+
+    .collapsible-body {
+      padding-top: 14px;
+    }
+  }
 }
 
 .section-inline-alert {
@@ -7173,6 +7047,10 @@ body.dark {
       background: rgba(255, 255, 255, 0.03);
       border-color: rgba(255, 255, 255, 0.08);
       box-shadow: none;
+    }
+
+    .section-block-title--toggle:hover {
+      color: #40a9ff;
     }
 
     .simple-mode-hero {

@@ -3427,19 +3427,22 @@ export default {
   padding-left: 24px;
 }
 .wl-row-main {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 80px auto;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
 }
 .wl-info-left {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  overflow: hidden;
 }
 .wl-symbol-line {
   display: flex;
   align-items: baseline;
   gap: 5px;
+  overflow: hidden;
 }
 .wl-name {
   font-size: 11px;
@@ -3448,20 +3451,21 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 130px;
   margin-top: 1px;
 }
 .wl-info-right {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  flex-shrink: 0;
-  margin-left: auto;
+  white-space: nowrap;
 }
 .wl-symbol {
   font-size: 13px;
   font-weight: 700;
   color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .wl-market {
   font-size: 9px;
@@ -3470,15 +3474,15 @@ export default {
   padding: 1px 4px;
   background: #f1f5f9;
   border-radius: 3px;
+  flex-shrink: 0;
 }
-.wl-spacer { flex: 1; }
+.wl-spacer { }
 .wl-sparkline-wrap {
-  flex: 1;
-  min-width: 40px;
-  max-width: 80px;
-  padding: 0 6px;
+  width: 80px;
+  padding: 0 2px;
   display: flex;
   align-items: center;
+  justify-content: center;
   .wl-sparkline {
     width: 100%;
     height: 20px;
