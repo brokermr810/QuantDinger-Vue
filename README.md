@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/brokermr810/QuantDinger/main/docs/screenshots/logo.png" alt="QuantDinger" width="120" />
+  <img src="https://camo.githubusercontent.com/0f7d83a11ee48d716ccc895fc90dd7ea9ff3f77a9ea1132d417d95bba2306573/68747470733a2f2f61692e7175616e7464696e6765722e636f6d2f696d672f6c6f676f2e65306635313061382e706e67" alt="QuantDinger" width="120" />
 </div>
 
 <h1 align="center">QuantDinger Frontend</h1>
