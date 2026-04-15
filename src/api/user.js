@@ -18,6 +18,19 @@ export function getUserList (params) {
 }
 
 /**
+ * Export user list (admin only)
+ * @param {Object} params - { search }
+ */
+export function exportUsers (params) {
+  return request({
+    url: '/api/users/export',
+    method: 'get',
+    params,
+    responseType: 'blob'
+  })
+}
+
+/**
  * Get user detail (admin only)
  * @param {Number} id - User ID
  */

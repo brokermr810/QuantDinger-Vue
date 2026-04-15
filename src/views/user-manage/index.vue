@@ -19,6 +19,10 @@
               <a-icon type="user-add" />
               {{ $t('userManage.createUser') || 'Create User' }}
             </a-button>
+            <a-button :loading="exportingUsers" @click="handleExportUsers">
+              <a-icon type="download" />
+              {{ $t('userManage.exportUsers') || 'Export Users' }}
+            </a-button>
             <a-button @click="loadUsers">
               <a-icon type="reload" />
               {{ $t('common.refresh') || 'Refresh' }}
@@ -843,7 +847,7 @@
 </template>
 
 <script>
-import { getUserList, createUser, updateUser, deleteUser, resetUserPassword, getRoles, setUserCredits, setUserVip, getSystemStrategies, getAdminOrders, getAdminAiStats } from '@/api/user'
+import { getUserList, exportUsers, createUser, updateUser, deleteUser, resetUserPassword, getRoles, setUserCredits, setUserVip, getSystemStrategies, getAdminOrders, getAdminAiStats } from '@/api/user'
 import { baseMixin } from '@/store/app-mixin'
 import { mapGetters } from 'vuex'
 
@@ -854,6 +858,7 @@ export default {
     return {
       activeTab: 'users',
       loading: false,
+      exportingUsers: false,
       users: [],
       roles: [],
       searchKeyword: '',
@@ -1440,6 +1445,29 @@ export default {
         this.$message.error('Failed to load users')
       } finally {
         this.loading = false
+      }
+    },
+
+    async handleExportUsers () {
+      this.exportingUsers = true
+      try {
+        const blob = await exportUsers({
+          search: this.searchKeyword || ''
+        })
+        const file = blob instanceof Blob ? blob : new Blob([blob], { type: 'text/csv;charset=utf-8;' })
+        const url = window.URL.createObjectURL(file)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `quantdinger_users_${new Date().toISOString().slice(0, 10)}.csv`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+        this.$message.success(this.$t('userManage.exportSuccess') || 'Export successful')
+      } catch (error) {
+        this.$message.error((error && error.message) || (this.$t('userManage.exportFailed') || 'Export failed'))
+      } finally {
+        this.exportingUsers = false
       }
     },
 

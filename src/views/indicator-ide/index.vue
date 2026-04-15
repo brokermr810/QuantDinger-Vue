@@ -228,7 +228,7 @@
                   <a-icon :type="aiDebugStateIcon()" />
                 </div>
                 <div class="ai-debug-card__headline">
-                  <span class="ai-debug-card__tag">AI 质检</span>
+                  <span class="ai-debug-card__tag">{{ $t('indicatorIde.aiQaTag') || 'AI 质检' }}</span>
                   <span class="ai-debug-card__title">{{ aiDebugSummary.title }}</span>
                 </div>
                 <a-icon type="close" class="ai-debug-card__dismiss" @click="aiDebugSummary = null" />
@@ -779,6 +779,24 @@
                       <strong>{{ item.value }}</strong>
                     </div>
                   </div>
+                  <div v-if="experimentSelectedChangedEntries.length" class="experiment-detail-block">
+                    <div class="experiment-detail-block-title">{{ $t('indicatorIde.tuningChangesTitle') }}</div>
+                    <div class="experiment-detail-block-hint">{{ $t('indicatorIde.tuningChangesHint') }}</div>
+                    <div class="experiment-change-list">
+                      <div v-for="item in experimentSelectedChangedEntries" :key="item.key" class="experiment-change-item">
+                        <span class="experiment-change-name">{{ item.label }}</span>
+                        <span class="experiment-change-values">
+                          <span class="experiment-change-before">{{ item.fromLabel }}</span>
+                          <span class="experiment-change-arrow">→</span>
+                          <span class="experiment-change-after">{{ item.toLabel }}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else-if="experimentSelectedChangeEntries.length" class="experiment-detail-block">
+                    <div class="experiment-detail-block-title">{{ $t('indicatorIde.tuningChangesTitle') }}</div>
+                    <div class="experiment-detail-block-hint">{{ $t('indicatorIde.tuningChangesAlreadyApplied') }}</div>
+                  </div>
                   <div v-if="experimentSelectedScoreComponents.length" class="experiment-detail-block">
                     <div class="experiment-detail-block-title">{{ $t('indicatorIde.scoreBreakdown') }}</div>
                     <div class="experiment-component-grid">
@@ -833,6 +851,25 @@
                       <span>{{ (record.result || {}).totalTrades || 0 }}</span>
                     </template>
                   </a-table>
+                </div>
+                <div v-if="lastAppliedExperimentChanges.length" class="experiment-detail-card">
+                  <div class="experiment-section-title">
+                    <a-icon type="check-circle" style="margin-right: 6px;" />
+                    {{ $t('indicatorIde.lastAppliedParamsTitle') }}
+                    <span v-if="lastAppliedExperimentCandidateName" style="font-weight: 400; margin-left: 8px; font-size: 12px; opacity: 0.65;">
+                      {{ $t('indicatorIde.lastAppliedParamsFrom', { name: lastAppliedExperimentCandidateName }) }}
+                    </span>
+                  </div>
+                  <div class="experiment-change-list experiment-change-list--applied">
+                    <div v-for="item in lastAppliedExperimentChanges" :key="`applied-${item.key}`" class="experiment-change-item">
+                      <span class="experiment-change-name">{{ item.label }}</span>
+                      <span class="experiment-change-values">
+                        <span class="experiment-change-before">{{ item.fromLabel }}</span>
+                        <span class="experiment-change-arrow">→</span>
+                        <span class="experiment-change-after">{{ item.toLabel }}</span>
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </a-tab-pane>
@@ -1138,6 +1175,8 @@ export default {
       experimentGlobalBestScoreLive: 0,
       experimentAbortController: null,
       experimentLiveHint: '',
+      lastAppliedExperimentCandidateName: '',
+      lastAppliedExperimentChanges: [],
 
       // Quick Trade drawer reuse
       qtSymbol: 'BTC/USDT',
@@ -1310,6 +1349,12 @@ export default {
         { label: this.$t('indicatorIde.sharpeRatio'), value: ((result.sharpeRatio || 0)).toFixed(2) },
         { label: this.$t('indicatorIde.tradeCount'), value: String(result.totalTrades || 0) }
       ]
+    },
+    experimentSelectedChangeEntries () {
+      return this.buildExperimentChangeEntries(this.experimentSelectedCandidate)
+    },
+    experimentSelectedChangedEntries () {
+      return this.experimentSelectedChangeEntries.filter(item => item.changed)
     },
     experimentSelectedScoreComponents () {
       const components = ((this.experimentSelectedCandidate && this.experimentSelectedCandidate.score) || {}).components || {}
@@ -1916,6 +1961,34 @@ export default {
       }
       return config
     },
+    parseIndicatorParamRaw (code) {
+      const lineRe = /^#\s*@param\s+(\w+)\s+(int|float|bool|str|string)\s+(\S+)/i
+      const params = {}
+      if (!code) return params
+      for (const rawLine of code.split('\n')) {
+        const line = rawLine.trim()
+        const m = line.match(lineRe)
+        if (!m) continue
+        params[m[1]] = {
+          type: String(m[2] || '').toLowerCase(),
+          rawValue: m[3]
+        }
+      }
+      return params
+    },
+    normalizeIndicatorParamValue (meta) {
+      if (!meta || meta.rawValue == null) return undefined
+      const type = String(meta.type || '').toLowerCase()
+      const rawValue = meta.rawValue
+      if (type === 'bool') {
+        return ['true', '1', 'yes', 'on'].includes(String(rawValue).toLowerCase())
+      }
+      if (type === 'int' || type === 'float') {
+        const num = Number(rawValue)
+        return Number.isFinite(num) ? num : rawValue
+      }
+      return String(rawValue)
+    },
     /** 与后端 StrategyConfigParser 一致：风控/仓位仅来自 @strategy（0–1 小数比例） */
     strategyConfigFromCode (code) {
       const raw = this.parseStrategyAnnotationRaw(code || '')
@@ -2284,7 +2357,8 @@ export default {
         'strategyConfig.position.entryPct': 'entryPct',
         'strategyConfig.risk.trailing.pct': 'trailingStopPct',
         'strategyConfig.risk.trailing.activationPct': 'trailingActivationPct',
-        'strategyConfig.risk.trailing.enabled': 'trailingEnabled'
+        'strategyConfig.risk.trailing.enabled': 'trailingEnabled',
+        'strategyConfig.tradeDirection': 'tradeDirection'
       }
       const norm = k => String(k || '').replace(/strategy_config\./gi, 'strategyConfig.')
       Object.keys(overrides).forEach(k => {
@@ -2293,10 +2367,18 @@ export default {
           out.leverage = Number(overrides[k])
           return
         }
+        if (k === 'tradeDirection') {
+          out.tradeDirection = String(overrides[k] || '').toLowerCase()
+          return
+        }
         const ann = pathToAnn[norm(k)]
         if (ann) {
           const v = overrides[k]
-          out[ann] = ann === 'trailingEnabled' ? !!v : v
+          out[ann] = ann === 'trailingEnabled'
+            ? !!v
+            : ann === 'tradeDirection'
+              ? String(v || '').toLowerCase()
+              : v
         }
       })
       const rp = overrides.riskParams
@@ -2313,6 +2395,92 @@ export default {
         }
       }
       return out
+    },
+    buildCurrentExperimentComparableState (code) {
+      const strategyConfig = this.strategyConfigFromCode(code || '')
+      const rawStrategy = this.parseStrategyAnnotationRaw(code || '')
+      const indicatorParamsRaw = this.parseIndicatorParamRaw(code || '')
+      const indicatorParams = {}
+      Object.keys(indicatorParamsRaw).forEach(name => {
+        indicatorParams[name] = this.normalizeIndicatorParamValue(indicatorParamsRaw[name])
+      })
+      const tradeDirection = String(rawStrategy.tradeDirection || this.tradeDirection || 'long').toLowerCase()
+      return {
+        stopLossPct: (((strategyConfig || {}).risk || {}).stopLossPct),
+        takeProfitPct: (((strategyConfig || {}).risk || {}).takeProfitPct),
+        entryPct: (((strategyConfig || {}).position || {}).entryPct),
+        trailingEnabled: ((((strategyConfig || {}).risk || {}).trailing || {}).enabled),
+        trailingStopPct: ((((strategyConfig || {}).risk || {}).trailing || {}).pct),
+        trailingActivationPct: ((((strategyConfig || {}).risk || {}).trailing || {}).activationPct),
+        tradeDirection: ['long', 'short', 'both'].includes(tradeDirection) ? tradeDirection : 'long',
+        leverage: Number(this.leverage || 1),
+        indicatorParams
+      }
+    },
+    isExperimentValueEqual (left, right) {
+      if (typeof left === 'number' || typeof right === 'number') {
+        const a = Number(left)
+        const b = Number(right)
+        if (Number.isFinite(a) && Number.isFinite(b)) return Math.abs(a - b) < 1e-10
+      }
+      if (typeof left === 'boolean' || typeof right === 'boolean') {
+        return Boolean(left) === Boolean(right)
+      }
+      return String(left) === String(right)
+    },
+    formatExperimentDisplayValue (key, value, options = {}) {
+      if (value === null || value === undefined || value === '') return '--'
+      if (options.isIndicatorParam) {
+        if (typeof value === 'boolean') return value ? 'true' : 'false'
+        if (typeof value === 'number' && Number.isFinite(value)) return Number(value.toFixed(8)).toString()
+        return String(value)
+      }
+      if (key === 'tradeDirection') return String(value)
+      return this.formatExperimentOverrideValue(key, value)
+    },
+    buildExperimentChangeEntries (candidate, code = this.currentCode || '') {
+      if (!candidate || !candidate.overrides || !Object.keys(candidate.overrides).length) return []
+      const currentState = this.buildCurrentExperimentComparableState(code)
+      const flatOverrides = this.flattenExperimentOverrides(candidate.overrides)
+      const entries = []
+
+      Object.keys(flatOverrides).forEach(key => {
+        const nextValue = flatOverrides[key]
+        const prevValue = currentState[key]
+        entries.push({
+          key: `base-${key}`,
+          label: this.humanizeExperimentKey(key),
+          fromLabel: this.formatExperimentDisplayValue(key, prevValue),
+          toLabel: this.formatExperimentDisplayValue(key, nextValue),
+          changed: !this.isExperimentValueEqual(prevValue, nextValue)
+        })
+      })
+
+      const indicatorParams = candidate.overrides.indicatorParams
+      if (indicatorParams && typeof indicatorParams === 'object') {
+        Object.keys(indicatorParams).forEach(name => {
+          const prevValue = (currentState.indicatorParams || {})[name]
+          const nextValue = indicatorParams[name]
+          entries.push({
+            key: `indicator-${name}`,
+            label: name,
+            fromLabel: this.formatExperimentDisplayValue(name, prevValue, { isIndicatorParam: true }),
+            toLabel: this.formatExperimentDisplayValue(name, nextValue, { isIndicatorParam: true }),
+            changed: !this.isExperimentValueEqual(prevValue, nextValue)
+          })
+        })
+      }
+
+      return entries
+    },
+    summarizeExperimentChangeEntries (entries) {
+      const changed = (entries || []).filter(item => item && item.changed)
+      if (!changed.length) return ''
+      const preview = changed.slice(0, 3).map(item => `${item.label} ${item.fromLabel} -> ${item.toLabel}`).join('; ')
+      const moreCount = changed.length - 3
+      return moreCount > 0
+        ? `${preview} ${this.$t('indicatorIde.moreParams', { count: moreCount })}`
+        : preview
     },
     applyStrategyAnnotationsToCode (code, flatMap) {
       const allowed = this._strategyAnnotationKeysSet()
@@ -2409,13 +2577,17 @@ export default {
         return
       }
       const prev = this.currentCode || ''
+      const changeEntries = this.buildExperimentChangeEntries(candidate, prev)
+      const changedEntries = changeEntries.filter(item => item.changed)
       const flatOverrides = this.flattenExperimentOverrides(candidate.overrides)
       const next = this.applyExperimentOverridesToCode(prev, candidate.overrides)
-      if (next === prev) {
+      if (next === prev && !changedEntries.length) {
         this.$message.info(this.$t('indicatorIde.applyCandidateNoChanges'))
         return
       }
-      this.replaceEditorCode(next)
+      if (next !== prev) {
+        this.replaceEditorCode(next)
+      }
       this.experimentSelectedCandidateName = candidate.name || this.experimentSelectedCandidateName
       if (flatOverrides.leverage != null) {
         const lv = Math.max(1, Math.min(125, Math.round(Number(flatOverrides.leverage))))
@@ -2423,7 +2595,12 @@ export default {
       }
       this.syncTradeUiFromStrategyCode(next, { silent: true })
       this.syncSelectedIndicatorToChart(next)
-      this.$message.success(this.$t('indicatorIde.bestParamsApplied'))
+      this.lastAppliedExperimentCandidateName = candidate.name || ''
+      this.lastAppliedExperimentChanges = changedEntries
+      const summary = this.summarizeExperimentChangeEntries(changedEntries)
+      this.$message.success(summary
+        ? `${this.$t('indicatorIde.bestParamsAppliedCount', { count: changedEntries.length })} ${summary}`
+        : this.$t('indicatorIde.bestParamsApplied'))
     },
     selectExperimentCandidate (candidate) {
       if (!candidate) return
@@ -2818,7 +2995,9 @@ export default {
             if (data === '[DONE]') break
             try {
               const json = JSON.parse(data)
-              if (json.error) throw new Error(json.error)
+              if (json.error) {
+                throw new Error(json.error)
+              }
               if (json.debug && json.debug.human_summary) {
                 this.aiDebugSummary = this.normalizeAiDebugSummary(json.debug.human_summary)
               }
@@ -2831,7 +3010,11 @@ export default {
                   this.cmInstance.refresh()
                 }
               }
-            } catch (_) {}
+            } catch (err) {
+              if (err instanceof Error && err.message) {
+                throw err
+              }
+            }
           }
         }
         if (this.cmInstance && generatedCode) {
@@ -2855,9 +3038,17 @@ export default {
           this.$message.warning(this.$t('indicatorIde.aiNoCode'))
         }
       } catch (error) {
-        this.$message.error(error.message || this.$t('indicatorIde.aiGenerateFailed'))
+        const errMsg = (error && error.message) || this.$t('indicatorIde.aiGenerateFailed')
+        if (/积分不足|insufficient/i.test(errMsg)) {
+          this.$message.warning(errMsg)
+        } else {
+          this.$message.error(errMsg)
+        }
         if (generatedCode && this.cmInstance) {
           this.cmInstance.setValue(this.cleanMarkdownCodeBlocks(generatedCode))
+        } else if (this.cmInstance) {
+          this.cmInstance.setValue(existingCode || '')
+          this.cmInstance.refresh()
         }
       } finally {
         this.aiGenerating = false
@@ -2895,9 +3086,9 @@ export default {
     },
     aiDebugStateLabel (summary = this.aiDebugSummary) {
       const state = this.aiDebugState(summary)
-      if (state === 'warning') return '仍有提醒'
-      if (state === 'success') return '自动修复完成'
-      return '质检已通过'
+      if (state === 'warning') return this.$t('indicatorIde.aiQaStateWarning') || '仍有提醒'
+      if (state === 'success') return this.$t('indicatorIde.aiQaStateSuccess') || '自动修复完成'
+      return this.$t('indicatorIde.aiQaStatePassed') || '质检已通过'
     },
     aiDebugStateTagColor (summary = this.aiDebugSummary) {
       const state = this.aiDebugState(summary)
@@ -4900,6 +5091,57 @@ export default {
   font-weight: 600;
   color: #595959;
 }
+.experiment-detail-block-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #8c8c8c;
+}
+.experiment-change-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.experiment-change-list--applied {
+  margin-top: 12px;
+}
+.experiment-change-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #f0f0f0;
+}
+.experiment-change-name {
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #262626;
+  word-break: break-word;
+}
+.experiment-change-values {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.experiment-change-before {
+  color: #8c8c8c;
+}
+.experiment-change-arrow {
+  color: #1890ff;
+  font-weight: 700;
+}
+.experiment-change-after {
+  color: #262626;
+  font-weight: 600;
+}
 .exp-table-name { font-weight: 600; }
 .exp-table-source { font-size: 11px; color: #8c8c8c; }
 .exp-table-score { font-weight: 700; color: #1890ff; }
@@ -5263,7 +5505,9 @@ export default {
   .experiment-candidate-source,
   .experiment-detail-source,
   .experiment-segment-time,
-  .experiment-detail-block-title { color: rgba(255,255,255,0.45); }
+  .experiment-detail-block-title,
+  .experiment-detail-block-hint,
+  .experiment-change-before { color: rgba(255,255,255,0.45); }
   .experiment-segment-title span { color: rgba(255,255,255,0.45); }
   .experiment-stage-card.is-done { background: rgba(23, 125, 220, 0.12); border-color: rgba(23, 125, 220, 0.3); }
   .experiment-stage-index { background: rgba(23, 125, 220, 0.16); color: #58a6ff; }
@@ -5290,6 +5534,17 @@ export default {
     border-color: #303030;
     span { color: rgba(255,255,255,0.45); }
     strong { color: rgba(255,255,255,0.88); }
+  }
+  .experiment-change-item {
+    background: #181818;
+    border-color: #303030;
+  }
+  .experiment-change-name,
+  .experiment-change-after {
+    color: rgba(255,255,255,0.88);
+  }
+  .experiment-change-arrow {
+    color: #58a6ff;
   }
   .experiment-candidate-card.active {
     border-color: #177ddc;
