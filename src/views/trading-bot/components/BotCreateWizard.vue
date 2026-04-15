@@ -74,7 +74,7 @@
             />
           </a-form-model-item>
 
-          <a-form-model-item :label="$t('trading-bot.wizard.timeframe')">
+          <a-form-model-item v-if="!isGridOrMartingaleBot" :label="$t('trading-bot.wizard.timeframe')">
             <a-select v-model="baseForm.timeframe">
               <a-select-option value="1m">1 {{ $t('trading-bot.timeframe.min') }}</a-select-option>
               <a-select-option value="5m">5 {{ $t('trading-bot.timeframe.min') }}</a-select-option>
@@ -83,6 +83,12 @@
               <a-select-option value="4h">4 {{ $t('trading-bot.timeframe.hour') }}</a-select-option>
               <a-select-option value="1d">1 {{ $t('trading-bot.timeframe.day') }}</a-select-option>
             </a-select>
+          </a-form-model-item>
+          <a-form-model-item v-else :label="$t('trading-bot.wizard.timeframe')">
+            <a-input :value="$t('trading-bot.wizard.gridTickMode')" disabled />
+            <div class="form-hint" style="margin-top: 4px; font-size: 12px; color: #8c8c8c;">
+              <a-icon type="info-circle" /> {{ $t('trading-bot.wizard.gridTickModeHint') }}
+            </div>
           </a-form-model-item>
 
           <a-form-model-item :label="$t('trading-bot.wizard.marketType')">
@@ -128,6 +134,7 @@
           ref="strategyConfig"
           v-model="strategyParams"
           :initialCapital="baseForm.initialCapital"
+          :marketType="baseForm.marketType"
         />
       </div>
 
@@ -200,7 +207,7 @@
               {{ baseForm.symbol }}
             </a-descriptions-item>
             <a-descriptions-item :label="$t('trading-bot.wizard.timeframe')">
-              {{ baseForm.timeframe }}
+              {{ isGridOrMartingaleBot ? $t('trading-bot.wizard.gridTickMode') : baseForm.timeframe }}
             </a-descriptions-item>
             <a-descriptions-item :label="$t('trading-bot.wizard.marketType')">
               {{ baseForm.marketType === 'swap' ? $t('trading-bot.wizard.futures') : $t('trading-bot.wizard.spot') }}
@@ -237,6 +244,9 @@
             </a-descriptions-item>
             <a-descriptions-item :label="$t('trading-bot.risk.maxPosition')">
               ${{ riskForm.maxPosition }}
+            </a-descriptions-item>
+            <a-descriptions-item :label="$t('trading-bot.risk.maxDailyLoss')">
+              ${{ riskForm.maxDailyLoss }}
             </a-descriptions-item>
           </a-descriptions>
 
@@ -277,6 +287,7 @@
 </template>
 
 <script>
+import request from '@/utils/request'
 import { createStrategy, updateStrategy } from '@/api/strategy'
 import { listExchangeCredentials } from '@/api/credentials'
 import { generateBotScript } from './botScriptTemplates'
@@ -369,6 +380,9 @@ export default {
       const meta = BOT_TYPE_MAP[this.botType]
       return meta ? meta.component : 'GridConfig'
     },
+    isGridOrMartingaleBot () {
+      return this.botType === 'grid' || this.botType === 'martingale'
+    },
     selectedCredentialLabel () {
       if (!this.baseForm.credentialId) return '-'
       const cred = this.credentials.find(c => c.id === this.baseForm.credentialId)
@@ -392,6 +406,28 @@ export default {
     }
   },
   methods: {
+    normalizeStrategyParams (params) {
+      const next = { ...(params || {}) }
+      if (this.botType === 'trend') {
+        delete next.timeframe
+      }
+      if (this.baseForm.marketType === 'spot') {
+        if (this.botType === 'grid') next.gridDirection = 'long'
+        if (this.botType === 'martingale' || this.botType === 'trend') next.direction = 'long'
+      }
+      return next
+    },
+    resolveTradeDirection (params) {
+      if (this.baseForm.marketType === 'spot') return 'long'
+      if (this.botType === 'grid') {
+        const dir = params.gridDirection || 'neutral'
+        return { neutral: 'both', long: 'long', short: 'short' }[dir] || 'both'
+      }
+      if (this.botType === 'martingale' || this.botType === 'trend') {
+        return params.direction || 'long'
+      }
+      return 'long'
+    },
     applyEditBot () {
       const bot = this.editBot
       if (!bot) return
@@ -487,12 +523,38 @@ export default {
         this.handleCreate()
       }
     },
-    buildPayload () {
-      const strategyCode = generateBotScript(this.botType, this.strategyParams, {
-        timeframe: this.baseForm.timeframe
+    async fetchGridReferencePrice () {
+      if (this.botType !== 'grid') return null
+      const symbol = this.baseForm.symbol
+      if (!symbol) return null
+      try {
+        const res = await request({
+          url: '/api/market/price',
+          method: 'get',
+          params: { market: 'Crypto', symbol }
+        })
+        const price = parseFloat(res?.data?.price)
+        return price > 0 ? price : null
+      } catch {
+        return null
+      }
+    },
+    async buildPayload () {
+      const strategyParams = this.normalizeStrategyParams(this.strategyParams)
+      if (this.botType === 'grid') {
+        const existingRef = parseFloat(strategyParams.referencePrice)
+        const fetchedRef = this.isEditMode ? null : await this.fetchGridReferencePrice()
+        const refPrice = fetchedRef || (existingRef > 0 ? existingRef : null)
+        if (refPrice > 0) {
+          strategyParams.referencePrice = refPrice
+        }
+      }
+      const effectiveTimeframe = this.isGridOrMartingaleBot ? '1m' : this.baseForm.timeframe
+      const strategyCode = generateBotScript(this.botType, strategyParams, {
+        timeframe: effectiveTimeframe
       })
       const leverage = this.baseForm.marketType === 'spot' ? 1 : (this.baseForm.leverage || 5)
-      const tradeDirection = this.baseForm.marketType === 'spot' ? 'long' : 'both'
+      const tradeDirection = this.resolveTradeDirection(strategyParams)
 
       return {
         strategy_name: this.baseForm.botName,
@@ -507,7 +569,7 @@ export default {
         },
         trading_config: {
           symbol: this.baseForm.symbol,
-          timeframe: this.baseForm.timeframe,
+          timeframe: effectiveTimeframe,
           market_type: this.baseForm.marketType,
           leverage: leverage,
           trade_direction: tradeDirection,
@@ -517,8 +579,8 @@ export default {
           max_position: this.riskForm.maxPosition,
           max_daily_loss: this.riskForm.maxDailyLoss,
           bot_type: this.botType,
-          bot_params: { ...this.strategyParams },
-          order_mode: this.strategyParams.orderMode || 'maker',
+          bot_params: strategyParams,
+          order_mode: strategyParams.orderMode || 'maker',
           entry_trigger_mode: 'immediate'
         },
         notification_config: {
@@ -531,7 +593,7 @@ export default {
     async handleCreate () {
       this.creating = true
       try {
-        const payload = this.buildPayload()
+        const payload = await this.buildPayload()
         await createStrategy(payload)
         this.$message.success(this.$t('trading-bot.wizard.createSuccess'))
         this.$emit('created')
@@ -544,7 +606,7 @@ export default {
     async handleUpdate () {
       this.creating = true
       try {
-        const payload = this.buildPayload()
+        const payload = await this.buildPayload()
         await updateStrategy(this.editBot.id, payload)
         this.$message.success(this.$t('trading-bot.wizard.saveSuccess'))
         this.$emit('updated')

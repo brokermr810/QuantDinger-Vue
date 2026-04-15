@@ -45,6 +45,9 @@ const request = axios.create({
 // Extended timeout for long-running AI analysis APIs
 export const ANALYSIS_TIMEOUT = 180000 // 3 minutes for AI analysis
 
+// Extended timeout for AI code/bot generation (LLM + auto-fix loop)
+export const AI_GENERATE_TIMEOUT = 180000 // 3 minutes for AI generation
+
 // Extended timeout for backtest APIs (can take several minutes)
 export const BACKTEST_TIMEOUT = 600000 // 10 minutes for backtest
 
@@ -95,6 +98,8 @@ request.interceptors.request.use(config => {
   if (config.url && isDefaultTimeout) {
     if (config.url.includes('/backtest/aiAnalyze')) {
       config.timeout = ANALYSIS_TIMEOUT
+    } else if (config.url.includes('/strategies/ai-generate') || config.url.includes('/indicator/aiGenerate')) {
+      config.timeout = AI_GENERATE_TIMEOUT
     } else if (config.url.includes('/backtest')) {
       config.timeout = BACKTEST_TIMEOUT
     }

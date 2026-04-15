@@ -614,6 +614,7 @@ import { getSettingsValues } from '@/api/settings'
 import { listExchangeCredentials, deleteExchangeCredential } from '@/api/credentials'
 import { baseMixin } from '@/store/app-mixin'
 import ExchangeAccountModal from '@/components/ExchangeAccountModal/ExchangeAccountModal.vue'
+import { formatBrowserLocalDateTime } from '@/utils/userTime'
 
 export default {
   name: 'Profile',
@@ -1100,35 +1101,12 @@ export default {
       return labels[role] || role
     },
 
-    _profileDateTimeLocaleOptions () {
-      const tz = String((this.profile && this.profile.timezone) || '').trim()
-      if (!tz) return {}
-      try {
-        Intl.DateTimeFormat(undefined, { timeZone: tz }).format(new Date())
-        return { timeZone: tz }
-      } catch (e) {
-        return {}
-      }
-    },
-
     formatTime (timestamp) {
-      if (!timestamp) return ''
-      const date = new Date(typeof timestamp === 'number' ? timestamp * 1000 : timestamp)
-      if (Number.isNaN(date.getTime())) return ''
-      return date.toLocaleString(undefined, this._profileDateTimeLocaleOptions())
+      return formatBrowserLocalDateTime(timestamp, { fallback: '' })
     },
 
-    // Credits log time should follow backend returned wall-clock value.
-    // For ISO strings ending with 'Z', avoid browser timezone conversion.
     formatCreditsLogTime (timestamp) {
-      if (!timestamp) return ''
-      if (typeof timestamp === 'string') {
-        const s = timestamp.trim()
-        if (s.endsWith('Z') && s.includes('T')) {
-          return s.replace('T', ' ').replace('Z', '')
-        }
-      }
-      return this.formatTime(timestamp)
+      return formatBrowserLocalDateTime(timestamp, { fallback: '' })
     },
 
     // Credits log methods

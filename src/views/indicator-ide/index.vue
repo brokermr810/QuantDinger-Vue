@@ -91,6 +91,7 @@
             </a-select-option>
           </a-select>
         </div>
+
       </div>
 
       <div class="toolbar-right">
@@ -215,6 +216,47 @@
                   :class="qualityHintClass(h)"
                 >{{ formatQualityHint(h) }}</li>
               </ul>
+            </div>
+
+            <div
+              v-if="aiDebugSummary"
+              class="ai-debug-card"
+              :class="`ai-debug-card--${aiDebugState()}`"
+            >
+              <div class="ai-debug-card__header">
+                <div class="ai-debug-card__badge">
+                  <a-icon :type="aiDebugStateIcon()" />
+                </div>
+                <div class="ai-debug-card__headline">
+                  <span class="ai-debug-card__tag">AI 质检</span>
+                  <span class="ai-debug-card__title">{{ aiDebugSummary.title }}</span>
+                </div>
+                <a-icon type="close" class="ai-debug-card__dismiss" @click="aiDebugSummary = null" />
+              </div>
+              <div class="ai-debug-card__chips">
+                <span :class="['ai-debug-chip', `ai-debug-chip--${aiDebugState()}`]">{{ aiDebugStateLabel() }}</span>
+                <span v-if="aiDebugSummary.fixed_messages.length" class="ai-debug-chip ai-debug-chip--success">
+                  <a-icon type="check" style="font-size: 10px;" /> {{ aiDebugSummary.fixed_messages.length }} {{ $t('indicatorIde.fixed') || '已修复' }}
+                </span>
+                <span v-if="aiDebugSummary.remaining_messages.length" class="ai-debug-chip ai-debug-chip--warning">
+                  <a-icon type="eye" style="font-size: 10px;" /> {{ aiDebugSummary.remaining_messages.length }} {{ $t('indicatorIde.toWatch') || '待关注' }}
+                </span>
+              </div>
+              <div v-if="aiDebugSummary.returned_text" class="ai-debug-card__body">
+                {{ aiDebugSummary.returned_text }}
+              </div>
+              <div v-if="aiDebugSummary.fixed_messages.length" class="ai-debug-card__group ai-debug-card__group--fixed">
+                <div class="ai-debug-card__group-label"><a-icon type="check-circle" /> {{ $t('indicatorIde.autoFixed') || '已自动修复' }}</div>
+                <div v-for="(msg, idx) in aiDebugSummary.fixed_messages" :key="`fixed-${idx}`" class="ai-debug-card__item">
+                  <span class="ai-debug-card__bullet ai-debug-card__bullet--green"></span>{{ msg }}
+                </div>
+              </div>
+              <div v-if="aiDebugSummary.remaining_messages.length" class="ai-debug-card__group ai-debug-card__group--remaining">
+                <div class="ai-debug-card__group-label"><a-icon type="warning" /> {{ $t('indicatorIde.needAttention') || '仍需关注' }}</div>
+                <div v-for="(msg, idx) in aiDebugSummary.remaining_messages" :key="`remaining-${idx}`" class="ai-debug-card__item">
+                  <span class="ai-debug-card__bullet ai-debug-card__bullet--orange"></span>{{ msg }}
+                </div>
+              </div>
             </div>
 
             <!-- AI Generation Panel -->
@@ -1068,6 +1110,7 @@ export default {
       aiPanelExpanded: true,
       aiPrompt: '',
       aiGenerating: false,
+      aiDebugSummary: null,
       ideAiTipIndex: 0,
       ideAiTipTimer: null,
       ideAiTips: [
@@ -1446,6 +1489,9 @@ export default {
         if (raw == null || raw === '') return
         const s = typeof raw === 'string' ? JSON.parse(raw) : raw
         if (!s || typeof s !== 'object') return
+        if (Array.isArray(s.activeIndicators)) {
+          this.activeIndicators = this.normalizePersistedChartIndicators(s.activeIndicators)
+        }
         if (s.timeframe && Object.prototype.hasOwnProperty.call(TF_MAX_DAYS, s.timeframe)) {
           this.timeframe = s.timeframe
         }
@@ -1489,10 +1535,31 @@ export default {
           symbol: this.symbol,
           timeframe: this.timeframe,
           selectedIndicatorId: this.selectedIndicatorId,
-          selectedWatchlistKey: this.selectedWatchlistKey
+          selectedWatchlistKey: this.selectedWatchlistKey,
+          activeIndicators: this.serializeChartIndicators()
         }
         storage.set(ideUiCacheStorageKey(this.userId), JSON.stringify(payload))
       } catch (_) { /* ignore quota */ }
+    },
+    normalizePersistedChartIndicators (items) {
+      if (!Array.isArray(items)) return []
+      return items
+        .filter(item => item && item.id && item.id !== 'selected-python-indicator' && item.type !== 'python')
+        .map(item => ({
+          id: item.id,
+          instanceId: item.instanceId || `${item.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          name: item.name,
+          shortName: item.shortName,
+          type: item.type,
+          visible: item.visible !== false,
+          params: item.params && typeof item.params === 'object' ? { ...item.params } : {},
+          style: item.style && typeof item.style === 'object'
+            ? { color: item.style.color || '', lineWidth: Number(item.style.lineWidth || 2) }
+            : { color: '', lineWidth: 2 }
+        }))
+    },
+    serializeChartIndicators () {
+      return this.normalizePersistedChartIndicators(this.activeIndicators)
     },
 
     async loadIndicators () {
@@ -1647,12 +1714,25 @@ export default {
     },
     handleIndicatorToggle ({ action, indicator }) {
       if (!indicator || !indicator.id) return
+      const targetInstanceId = indicator.instanceId || indicator.id
       if (action === 'add') {
-        if (!this.activeIndicators.some(item => item.id === indicator.id)) {
-          this.activeIndicators = [...this.activeIndicators, { ...indicator, calculate: null }]
-        }
+        this.activeIndicators = [...this.activeIndicators, { ...indicator, instanceId: targetInstanceId, calculate: null }]
+      } else if (action === 'update') {
+        this.activeIndicators = this.activeIndicators.map(item => {
+          if ((item.instanceId || item.id) !== targetInstanceId) return item
+          return {
+            ...item,
+            ...indicator,
+            instanceId: targetInstanceId,
+            params: indicator.params && typeof indicator.params === 'object' ? { ...indicator.params } : (item.params || {}),
+            style: indicator.style && typeof indicator.style === 'object'
+              ? { color: indicator.style.color || '', lineWidth: Number(indicator.style.lineWidth || 2) }
+              : (item.style || { color: '', lineWidth: 2 }),
+            calculate: null
+          }
+        })
       } else if (action === 'remove') {
-        this.activeIndicators = this.activeIndicators.filter(item => item.id !== indicator.id)
+        this.activeIndicators = this.activeIndicators.filter(item => (item.instanceId || item.id) !== targetInstanceId)
       }
       this.syncSelectedIndicatorToChart()
     },
@@ -2610,6 +2690,10 @@ export default {
 
       this.clearBacktestSignalOverlays({ silent: true })
 
+      // Build sorted kline timestamp array for snap-to-nearest matching
+      const klineData = (typeof chartInstance.getDataList === 'function') ? chartInstance.getDataList() : []
+      const klineTimestamps = klineData.map(k => k.timestamp)
+
       for (const trade of trades) {
         const ty = (trade.type || '').toLowerCase()
         const isBuy = ty.startsWith('open_long') || ty === 'buy' || ty === 'close_short'
@@ -2618,10 +2702,29 @@ export default {
 
         let timestamp = trade.timestamp || 0
         if (!timestamp && trade.time) {
-          const d = new Date(trade.time)
+          // Force UTC parsing: backend time strings like '2024-01-15 09:30' are UTC
+          let timeStr = String(trade.time)
+          if (!timeStr.includes('T')) timeStr = timeStr.replace(' ', 'T')
+          if (!timeStr.includes('Z') && !/[+-]\d{2}:?\d{2}$/.test(timeStr)) timeStr += 'Z'
+          const d = new Date(timeStr)
           if (!isNaN(d.getTime())) timestamp = d.getTime()
         }
         if (timestamp < 1e10) timestamp *= 1000
+
+        // Snap to nearest K-line bar to avoid sub-bar offset from execution timeframe
+        if (klineTimestamps.length > 0) {
+          let lo = 0; let hi = klineTimestamps.length - 1
+          while (lo < hi) {
+            const mid = (lo + hi) >> 1
+            if (klineTimestamps[mid] < timestamp) lo = mid + 1
+            else hi = mid
+          }
+          // lo is the first kline >= timestamp; compare with lo-1 to find nearest
+          if (lo > 0 && (timestamp - klineTimestamps[lo - 1]) < (klineTimestamps[lo] - timestamp)) {
+            lo = lo - 1
+          }
+          timestamp = klineTimestamps[lo]
+        }
 
         const price = trade.price || 0
         if (!timestamp || !price) continue
@@ -2665,6 +2768,7 @@ export default {
         return
       }
       this.aiGenerating = true
+      this.aiDebugSummary = null
       let existingCode = ''
       if (this.cmInstance) existingCode = this.cmInstance.getValue() || ''
       if (this.cmInstance) {
@@ -2675,6 +2779,7 @@ export default {
       try {
         const url = '/api/indicator/aiGenerate'
         const token = storage.get(ACCESS_TOKEN)
+        const lang = (this.$i18n && this.$i18n.locale) || 'en-US'
         const requestBody = { prompt: this.aiPrompt.trim() }
         if (existingCode.trim()) requestBody.existingCode = existingCode.trim()
 
@@ -2684,7 +2789,9 @@ export default {
             'Content-Type': 'application/json',
             'Authorization': token ? `Bearer ${token}` : '',
             'Access-Token': token || '',
-            'Token': token || ''
+            'Token': token || '',
+            'X-App-Lang': lang,
+            'Accept-Language': lang
           },
           body: JSON.stringify(requestBody),
           credentials: 'include'
@@ -2712,6 +2819,9 @@ export default {
             try {
               const json = JSON.parse(data)
               if (json.error) throw new Error(json.error)
+              if (json.debug && json.debug.human_summary) {
+                this.aiDebugSummary = this.normalizeAiDebugSummary(json.debug.human_summary)
+              }
               if (json.content) {
                 generatedCode += json.content
                 const cleanedCode = this.cleanMarkdownCodeBlocks(generatedCode)
@@ -2752,6 +2862,48 @@ export default {
       } finally {
         this.aiGenerating = false
       }
+    },
+    normalizeAiDebugSummary (summary) {
+      if (!summary || typeof summary !== 'object') return null
+      const fixedMessages = Array.isArray(summary.fixed_messages) ? summary.fixed_messages.filter(Boolean) : []
+      const remainingMessages = Array.isArray(summary.remaining_messages) ? summary.remaining_messages.filter(Boolean) : []
+      const normalized = {
+        title: summary.title ? String(summary.title) : '',
+        returned_text: summary.returned_text ? String(summary.returned_text) : '',
+        fixed_messages: fixedMessages,
+        remaining_messages: remainingMessages
+      }
+      if (!normalized.title && !normalized.returned_text && !fixedMessages.length && !remainingMessages.length) {
+        return null
+      }
+      return normalized
+    },
+    aiDebugAlertType (summary = this.aiDebugSummary) {
+      if (!summary) return 'info'
+      if ((summary.remaining_messages || []).length) return 'warning'
+      if ((summary.fixed_messages || []).length) return 'success'
+      return 'info'
+    },
+    aiDebugState (summary = this.aiDebugSummary) {
+      return this.aiDebugAlertType(summary)
+    },
+    aiDebugStateIcon (summary = this.aiDebugSummary) {
+      const state = this.aiDebugState(summary)
+      if (state === 'warning') return 'exclamation-circle'
+      if (state === 'success') return 'check-circle'
+      return 'info-circle'
+    },
+    aiDebugStateLabel (summary = this.aiDebugSummary) {
+      const state = this.aiDebugState(summary)
+      if (state === 'warning') return '仍有提醒'
+      if (state === 'success') return '自动修复完成'
+      return '质检已通过'
+    },
+    aiDebugStateTagColor (summary = this.aiDebugSummary) {
+      const state = this.aiDebugState(summary)
+      if (state === 'warning') return 'orange'
+      if (state === 'success') return 'green'
+      return 'blue'
     },
     qualityHintClass (h) {
       const s = (h && h.severity) || 'info'
@@ -3360,6 +3512,12 @@ export default {
     }
   },
   watch: {
+    activeIndicators: {
+      deep: true,
+      handler () {
+        this.schedulePersistIdeUiState()
+      }
+    },
     market () {
       this.schedulePersistIdeUiState()
     },
@@ -3435,7 +3593,8 @@ export default {
 .indicator-ide {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 64px);
+  min-height: calc(100vh - 64px);
+  height: auto;
   padding: 0;
   background: #fff;
 }
@@ -3577,18 +3736,23 @@ export default {
 }
 
 // ===== Main =====
-.ide-main { display: flex; flex: 1; overflow: hidden; }
+.ide-main { display: flex; flex: 1 1 auto; overflow: visible; min-height: 0; align-items: flex-start; }
 
 .ide-left {
   width: 30%;
   min-width: 280px;
   max-width: 400px;
+  height: calc(100vh - 64px - 56px);
+  max-height: calc(100vh - 64px - 56px);
   display: flex;
   flex-direction: column;
   border-right: 1px solid #eee;
   overflow: hidden;
   flex-shrink: 0;
   background: #fcfcfd;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
 }
 
 // ===== Code Panel =====
@@ -3799,6 +3963,98 @@ export default {
 .quality-hint--warn { color: #d46b08; }
 .quality-hint--info { color: #096dd9; }
 
+.ai-debug-card {
+  margin: 10px 10px 0;
+  padding: 0;
+  border: 1px solid #e6f4ff;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+  font-size: 12px;
+}
+.ai-debug-card--success { border-color: #b7eb8f; }
+.ai-debug-card--warning { border-color: #ffd591; }
+
+.ai-debug-card__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: linear-gradient(135deg, rgba(24, 144, 255, 0.06) 0%, transparent 100%);
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+.ai-debug-card--success .ai-debug-card__header {
+  background: linear-gradient(135deg, rgba(82, 196, 26, 0.06) 0%, transparent 100%);
+}
+.ai-debug-card--warning .ai-debug-card__header {
+  background: linear-gradient(135deg, rgba(250, 140, 22, 0.06) 0%, transparent 100%);
+}
+
+.ai-debug-card__badge {
+  width: 26px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 7px; flex-shrink: 0; font-size: 13px;
+  background: rgba(24, 144, 255, 0.1); color: #1890ff;
+}
+.ai-debug-card--success .ai-debug-card__badge { background: rgba(82, 196, 26, 0.1); color: #389e0d; }
+.ai-debug-card--warning .ai-debug-card__badge { background: rgba(250, 140, 22, 0.1); color: #d46b08; }
+
+.ai-debug-card__headline {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px;
+}
+.ai-debug-card__tag {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+  color: #1890ff; white-space: nowrap;
+}
+.ai-debug-card--success .ai-debug-card__tag { color: #389e0d; }
+.ai-debug-card--warning .ai-debug-card__tag { color: #d46b08; }
+
+.ai-debug-card__title {
+  font-size: 12px; font-weight: 600; color: #262626;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ai-debug-card__dismiss {
+  flex-shrink: 0; cursor: pointer; font-size: 12px; color: #bfbfbf;
+  padding: 2px; border-radius: 4px; transition: all 0.15s;
+  &:hover { color: #595959; background: rgba(0,0,0,0.04); }
+}
+
+.ai-debug-card__chips {
+  display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 10px 0;
+}
+.ai-debug-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600;
+  background: rgba(24, 144, 255, 0.08); color: #1890ff;
+}
+.ai-debug-chip--success { background: rgba(82, 196, 26, 0.08); color: #389e0d; }
+.ai-debug-chip--warning { background: rgba(250, 140, 22, 0.08); color: #d46b08; }
+.ai-debug-chip--info { background: rgba(24, 144, 255, 0.08); color: #1890ff; }
+
+.ai-debug-card__body {
+  padding: 8px 10px 0; line-height: 1.6; color: #595959;
+}
+
+.ai-debug-card__group {
+  padding: 6px 10px;
+  &:last-child { padding-bottom: 10px; }
+}
+.ai-debug-card__group-label {
+  font-size: 11px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 4px;
+  color: #389e0d;
+}
+.ai-debug-card__group--remaining .ai-debug-card__group-label { color: #d46b08; }
+
+.ai-debug-card__item {
+  display: flex; align-items: baseline; gap: 6px;
+  padding: 2px 0; font-size: 11px; line-height: 1.5; color: #595959;
+}
+.ai-debug-card__bullet {
+  width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; margin-top: 5px;
+}
+.ai-debug-card__bullet--green { background: #52c41a; }
+.ai-debug-card__bullet--orange { background: #fa8c16; }
+
 // ===== Params =====
 .params-scroll {
   flex: 1;
@@ -3807,7 +4063,7 @@ export default {
   &::-webkit-scrollbar { width: 4px; }
   &::-webkit-scrollbar-thumb { background: #d9d9d9; border-radius: 2px; }
 }
-.params-scroll--right { padding: 12px 16px 10px; }
+.params-scroll--right { padding: 12px 16px 10px; min-width: 0; }
 
 .param-section {
   margin-bottom: 0;
@@ -3817,14 +4073,20 @@ export default {
   background: #fff;
   border: 1px solid rgba(15, 23, 42, 0.06);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  min-width: 0;
+  overflow: hidden;
 }
 .param-section--full { grid-column: 1 / -1; }
 
 .direction-radio-group {
   display: flex !important;
   width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
   /deep/ .ant-radio-button-wrapper {
-    flex: 1;
+    flex: 1 1 calc(33.333% - 6px);
+    min-width: 120px;
     text-align: center;
     height: 34px;
     line-height: 32px;
@@ -3835,7 +4097,10 @@ export default {
     background: #fafafa;
     color: #8c8c8c;
     transition: all 0.2s ease;
-    &:not(:first-child) { margin-left: 8px; }
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-left: 0 !important;
     &::before { display: none !important; }
     &:hover {
       color: #595959;
@@ -3895,8 +4160,31 @@ export default {
   }
 }
 
+@media (max-width: 1500px) {
+  .params-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .param-section--full {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 1280px) {
+  .direction-radio-group /deep/ .ant-radio-button-wrapper {
+    flex-basis: calc(50% - 4px);
+  }
+}
+
+@media (max-width: 1100px) {
+  .direction-radio-group /deep/ .ant-radio-button-wrapper {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+}
+
 // ===== Right Panel =====
-.ide-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.ide-right { flex: 1; display: flex; flex-direction: column; overflow: visible; min-width: 0; }
 
 /* 闪电交易：主布局内右侧栏，与 .ide-left 同为抽拉分栏（无全屏遮罩） */
 .ide-quick-right {
@@ -4026,7 +4314,7 @@ export default {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   padding: 0 14px 0;
 }
 .params-card {
@@ -4084,13 +4372,15 @@ export default {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  min-width: 0;
+  overflow: hidden;
 }
 .result-tabs {
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
+  min-height: auto;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   /deep/ .ant-tabs-bar {
     margin-bottom: 0;
     flex-shrink: 0;
@@ -4100,14 +4390,10 @@ export default {
   /deep/ .ant-tabs-tab { font-size: 13px; }
   /* animated=false 时内容区无 margin/transform，可与 flex+滚动安全共用 */
   /deep/ .ant-tabs-content {
-    flex: 1;
-    min-height: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
     padding: 10px 0 14px;
-    &::-webkit-scrollbar { width: 5px; }
-    &::-webkit-scrollbar-thumb { background: #d0d0d0; border-radius: 3px; }
-    &::-webkit-scrollbar-track { background: transparent; }
   }
 }
 
@@ -4185,21 +4471,26 @@ export default {
 }
 .ide-tuning-launch-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(24, 144, 255, 0.04) 0%, rgba(114, 46, 209, 0.03) 100%);
+  border: 1px solid rgba(24, 144, 255, 0.08);
 }
 .ide-tuning-launch-icon {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 10px;
   background: linear-gradient(135deg, #1890ff, #722ed1);
   color: #fff;
-  font-size: 16px;
+  font-size: 17px;
   flex-shrink: 0;
+  box-shadow: 0 3px 10px rgba(24, 144, 255, 0.25);
 }
 .ide-tuning-launch-title {
   font-size: 14px;
@@ -4207,9 +4498,9 @@ export default {
   color: #1e293b;
 }
 .ide-tuning-launch-subtitle {
-  font-size: 12px;
+  font-size: 11px;
   color: #8c8c8c;
-  margin-top: 3px;
+  margin-top: 2px;
   line-height: 1.5;
 }
 .ide-tuning-method-cards {
@@ -4218,31 +4509,51 @@ export default {
   gap: 10px;
 }
 .ide-tuning-method-card {
-  padding: 12px 14px;
+  position: relative;
+  padding: 14px 16px;
   border-radius: 10px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   background: #fff;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: all 0.25s ease;
+  overflow: hidden;
+  &::before {
+    content: '';
+    position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: #722ed1; border-radius: 3px 0 0 3px;
+    opacity: 0; transition: opacity 0.25s;
+  }
   &:hover {
-    border-color: rgba(24, 144, 255, 0.2);
-    box-shadow: 0 2px 8px rgba(24, 144, 255, 0.08);
+    border-color: rgba(114, 46, 209, 0.2);
+    box-shadow: 0 4px 12px rgba(114, 46, 209, 0.08);
+    transform: translateY(-1px);
+    &::before { opacity: 1; }
   }
 }
 .ide-tuning-method-card--ai {
-  border-color: rgba(24, 144, 255, 0.15);
-  background: linear-gradient(165deg, #fff 0%, rgba(24, 144, 255, 0.03) 100%);
+  border-color: rgba(24, 144, 255, 0.12);
+  background: linear-gradient(165deg, #fff 0%, rgba(24, 144, 255, 0.02) 100%);
+  &::before { background: linear-gradient(180deg, #1890ff, #40a9ff); }
+  &:hover {
+    border-color: rgba(24, 144, 255, 0.25);
+    box-shadow: 0 4px 12px rgba(24, 144, 255, 0.1);
+  }
 }
 .ide-tuning-method-card-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 .ide-tuning-method-icon {
-  font-size: 15px;
-  &.ide-tuning-method-icon--grid { color: #722ed1; }
-  &.ide-tuning-method-icon--ai { color: #1890ff; }
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  border-radius: 7px; font-size: 14px; flex-shrink: 0;
+  &.ide-tuning-method-icon--grid {
+    color: #722ed1; background: rgba(114, 46, 209, 0.08);
+  }
+  &.ide-tuning-method-icon--ai {
+    color: #1890ff; background: rgba(24, 144, 255, 0.08);
+  }
 }
 .ide-tuning-method-name {
   font-size: 13px;
@@ -4252,7 +4563,7 @@ export default {
 .ide-tuning-method-desc {
   font-size: 11px;
   color: #8c8c8c;
-  line-height: 1.55;
+  line-height: 1.6;
   margin-bottom: 10px;
 }
 .ide-tuning-method-actions {
@@ -4692,6 +5003,13 @@ export default {
 
 .add-item-active { background: #e6f7ff !important; }
 
+.date-presets /deep/ .ant-btn-primary,
+.date-presets /deep/ .ant-btn-primary:hover,
+.date-presets /deep/ .ant-btn-primary:focus,
+.date-presets /deep/ .ant-btn-primary:active {
+  color: #fff;
+}
+
 // ===== Watchlist option (selected value in toolbar) =====
 /deep/ .wl-opt-tag {
   display: inline-block;
@@ -4774,17 +5092,27 @@ export default {
       border-top-color: #303030;
     }
   }
+  .ide-tuning-launch-header {
+    background: linear-gradient(135deg, rgba(24, 144, 255, 0.06) 0%, rgba(114, 46, 209, 0.04) 100%);
+    border-color: rgba(88, 166, 255, 0.12);
+  }
   .ide-tuning-launch-title { color: rgba(255, 255, 255, 0.88); }
   .ide-tuning-launch-subtitle { color: rgba(255, 255, 255, 0.45); }
   .ide-tuning-method-card {
     background: #1f1f1f;
     border-color: #363636;
     box-shadow: none;
-    &:hover { border-color: rgba(88, 166, 255, 0.3); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
+    &::before { opacity: 0; }
+    &:hover { border-color: rgba(114, 46, 209, 0.35); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); transform: translateY(-1px); &::before { opacity: 1; } }
   }
   .ide-tuning-method-card--ai {
     background: linear-gradient(165deg, #1f1f1f 0%, rgba(23, 125, 220, 0.06) 100%);
     border-color: rgba(88, 166, 255, 0.2);
+    &:hover { border-color: rgba(88, 166, 255, 0.35); }
+  }
+  .ide-tuning-method-icon {
+    &.ide-tuning-method-icon--grid { background: rgba(114, 46, 209, 0.12); }
+    &.ide-tuning-method-icon--ai { background: rgba(24, 144, 255, 0.12); }
   }
   .ide-tuning-method-name { color: rgba(255, 255, 255, 0.85); }
   .ide-tuning-method-desc { color: rgba(255, 255, 255, 0.45); }
@@ -4842,6 +5170,12 @@ export default {
     color: rgba(255, 255, 255, 0.65);
     background: #262626;
   }
+  .date-presets /deep/ .ant-btn-primary,
+  .date-presets /deep/ .ant-btn-primary:hover,
+  .date-presets /deep/ .ant-btn-primary:focus,
+  .date-presets /deep/ .ant-btn-primary:active {
+    color: #fff;
+  }
   .params-card-actions > .anticon {
     color: rgba(255, 255, 255, 0.55);
     &:hover { color: rgba(255, 255, 255, 0.88); }
@@ -4876,6 +5210,25 @@ export default {
   .code-quality-panel { border-top-color: #303030; }
   .code-quality-title { color: rgba(255,255,255,0.78); }
   .code-quality-list { color: rgba(255,255,255,0.55); }
+  .ai-debug-card {
+    border-color: #303030; background: #1f1f1f;
+  }
+  .ai-debug-card--success { border-color: rgba(82, 196, 26, 0.25); }
+  .ai-debug-card--warning { border-color: rgba(250, 140, 22, 0.3); }
+  .ai-debug-card__header { background: linear-gradient(135deg, rgba(24, 144, 255, 0.08) 0%, transparent 100%); border-bottom-color: #303030; }
+  .ai-debug-card--success .ai-debug-card__header { background: linear-gradient(135deg, rgba(82, 196, 26, 0.08) 0%, transparent 100%); }
+  .ai-debug-card--warning .ai-debug-card__header { background: linear-gradient(135deg, rgba(250, 140, 22, 0.08) 0%, transparent 100%); }
+  .ai-debug-card__badge { background: rgba(24, 144, 255, 0.15); }
+  .ai-debug-card--success .ai-debug-card__badge { background: rgba(82, 196, 26, 0.15); }
+  .ai-debug-card--warning .ai-debug-card__badge { background: rgba(250, 140, 22, 0.15); }
+  .ai-debug-card__title { color: rgba(255,255,255,0.9); }
+  .ai-debug-card__dismiss { color: rgba(255,255,255,0.3); &:hover { color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.06); } }
+  .ai-debug-chip { background: rgba(24, 144, 255, 0.12); }
+  .ai-debug-chip--success { background: rgba(82, 196, 26, 0.12); }
+  .ai-debug-chip--warning { background: rgba(250, 140, 22, 0.12); }
+  .ai-debug-card__body, .ai-debug-card__item { color: rgba(255,255,255,0.65); }
+  .ai-debug-card__group-label { color: #73d13d; }
+  .ai-debug-card__group--remaining .ai-debug-card__group-label { color: #ffa940; }
   .quality-hint--error { color: #ff7875; }
   .quality-hint--warn { color: #ffc069; }
   .quality-hint--info { color: #69c0ff; }

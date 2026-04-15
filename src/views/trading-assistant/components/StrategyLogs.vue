@@ -57,7 +57,7 @@
 
 <script>
 import request from '@/utils/request'
-import { formatUserDateTime } from '@/utils/userTime'
+import { formatBrowserLocalDateTime } from '@/utils/userTime'
 
 export default {
   name: 'StrategyLogs',
@@ -148,7 +148,7 @@ export default {
     formatTime (ts) {
       if (!ts) return ''
       const loc = this.$i18n.locale || 'zh-CN'
-      return formatUserDateTime(ts, { locale: loc, fallback: String(ts) })
+      return formatBrowserLocalDateTime(ts, { locale: loc, fallback: String(ts) })
     },
 
     getLevelColor (level) {

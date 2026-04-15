@@ -33,10 +33,43 @@
             :key="indicator.id"
             class="indicator-btn"
             :class="{ active: isIndicatorActive(indicator.id) }"
-            @click="toggleIndicator(indicator)"
+            @click="handleIndicatorButtonClick(indicator)"
             :title="indicator.name"
           >
             {{ indicator.shortName }}
+          </div>
+        </div>
+        <div v-if="activePresetIndicators.length" class="indicator-active-bar">
+          <div
+            v-for="indicator in activePresetIndicators"
+            :key="indicator.instanceId || indicator.id"
+            class="indicator-active-chip"
+            :class="{ 'indicator-active-chip--hidden': indicator.visible === false }"
+          >
+            <span class="indicator-active-chip__label" @click="openIndicatorEditor(indicator)">
+              {{ formatIndicatorInstanceLabel(indicator) }}
+            </span>
+            <a-tooltip :title="indicator.visible === false ? $t('indicatorIde.editor.showIndicator') : $t('indicatorIde.editor.hideIndicator')">
+              <a-icon
+                :type="indicator.visible === false ? 'eye-invisible' : 'eye'"
+                class="indicator-active-chip__action"
+                @click.stop="toggleIndicatorVisibility(indicator)"
+              />
+            </a-tooltip>
+            <a-tooltip :title="$t('indicatorIde.editor.settings')">
+              <a-icon
+                type="setting"
+                class="indicator-active-chip__action"
+                @click.stop="openIndicatorEditor(indicator)"
+              />
+            </a-tooltip>
+            <a-tooltip :title="$t('indicatorIde.editor.deleteIndicator')">
+              <a-icon
+                type="close"
+                class="indicator-active-chip__action"
+                @click.stop="removeIndicatorInstance(indicator)"
+              />
+            </a-tooltip>
           </div>
         </div>
         <div
@@ -84,11 +117,56 @@
         </div>
       </div>
     </div>
+    <a-modal
+      :visible="indicatorEditorVisible"
+      :title="indicatorEditorTitle"
+      :confirmLoading="indicatorEditorSaving"
+      :okText="$t('common.confirm')"
+      :cancelText="$t('common.cancel')"
+      :wrap-class-name="indicatorEditorModalWrapClass"
+      @ok="applyIndicatorEditor"
+      @cancel="closeIndicatorEditor"
+    >
+      <div v-if="indicatorEditorSchema.length" class="indicator-editor-form">
+        <div
+          v-for="field in indicatorEditorSchema"
+          :key="field.key"
+          class="indicator-editor-field"
+        >
+          <div class="indicator-editor-field__label">{{ field.label }}</div>
+          <a-input-number
+            v-model="indicatorEditorForm[field.key]"
+            :min="field.min"
+            :max="field.max"
+            :step="field.step || 1"
+            :precision="field.precision != null ? field.precision : 0"
+            style="width: 100%"
+          />
+          <div v-if="field.hint" class="indicator-editor-field__hint">{{ field.hint }}</div>
+        </div>
+        <div class="indicator-editor-field">
+          <div class="indicator-editor-field__label">{{ $t('indicatorIde.editor.color') }}</div>
+          <input v-model="indicatorEditorForm._styleColor" type="color" class="indicator-editor-color" />
+        </div>
+        <div class="indicator-editor-field">
+          <div class="indicator-editor-field__label">{{ $t('indicatorIde.editor.lineWidth') }}</div>
+          <a-input-number
+            v-model="indicatorEditorForm._styleLineWidth"
+            :min="1"
+            :max="6"
+            :step="1"
+            :precision="0"
+            style="width: 100%"
+          />
+        </div>
+      </div>
+      <div v-else class="indicator-editor-empty">{{ $t('indicatorIde.editor.noEditableParams') }}</div>
+    </a-modal>
   </div>
 </template>
 
 <script>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch, shallowRef, getCurrentInstance } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, watch, shallowRef, getCurrentInstance } from 'vue'
 import { init, registerIndicator, registerOverlay } from 'klinecharts'
 import request from '@/utils/request'
 import { decryptCodeAuto, needsDecrypt } from '@/utils/codeDecrypt'
@@ -254,21 +332,245 @@ export default {
 
     // 指标按钮定义
     const indicatorButtons = ref([
-      { id: 'sma', name: 'SMA (简单移动平均)', shortName: 'SMA', type: 'line', defaultParams: { length: 20 } },
-      { id: 'ema', name: 'EMA (指数移动平均)', shortName: 'EMA', type: 'line', defaultParams: { length: 20 } },
-      { id: 'rsi', name: 'RSI (相对强弱)', shortName: 'RSI', type: 'line', defaultParams: { length: 14 } },
-      { id: 'macd', name: 'MACD', shortName: 'MACD', type: 'macd', defaultParams: { fast: 12, slow: 26, signal: 9 } },
-      { id: 'bb', name: '布林带 (Bollinger Bands)', shortName: 'BB', type: 'band', defaultParams: { length: 20, mult: 2 } },
-      { id: 'atr', name: 'ATR (平均真实波幅)', shortName: 'ATR', type: 'line', defaultParams: { period: 14 } },
-      { id: 'cci', name: 'CCI (商品通道指数)', shortName: 'CCI', type: 'line', defaultParams: { length: 20 } },
-      { id: 'williams', name: 'Williams %R (威廉指标)', shortName: 'W%R', type: 'line', defaultParams: { length: 14 } },
-      { id: 'mfi', name: 'MFI (资金流量指标)', shortName: 'MFI', type: 'line', defaultParams: { length: 14 } },
-      { id: 'adx', name: 'ADX (平均趋向指数)', shortName: 'ADX', type: 'adx', defaultParams: { length: 14 } },
-      { id: 'obv', name: 'OBV (能量潮)', shortName: 'OBV', type: 'line', defaultParams: {} },
-      { id: 'adosc', name: 'ADOSC (积累/派发振荡器)', shortName: 'ADOSC', type: 'line', defaultParams: { fast: 3, slow: 10 } },
-      { id: 'ad', name: 'AD (积累/派发线)', shortName: 'AD', type: 'line', defaultParams: {} },
-      { id: 'kdj', name: 'KDJ (随机指标)', shortName: 'KDJ', type: 'line', defaultParams: { period: 9, k: 3, d: 3 } }
+      {
+        id: 'sma',
+        name: 'SMA (简单移动平均)',
+        shortName: 'SMA',
+        type: 'line',
+        defaultParams: { length: 20 },
+        paramSchema: [{ key: 'length', labelKey: 'indicatorIde.editor.period', type: 'number', min: 1, max: 300, step: 1 }]
+      },
+      {
+        id: 'ema',
+        name: 'EMA (指数移动平均)',
+        shortName: 'EMA',
+        type: 'line',
+        defaultParams: { length: 20 },
+        paramSchema: [{ key: 'length', labelKey: 'indicatorIde.editor.period', type: 'number', min: 1, max: 300, step: 1 }]
+      },
+      {
+        id: 'rsi',
+        name: 'RSI (相对强弱)',
+        shortName: 'RSI',
+        type: 'line',
+        defaultParams: { length: 14 },
+        paramSchema: [{ key: 'length', labelKey: 'indicatorIde.editor.period', type: 'number', min: 1, max: 200, step: 1 }]
+      },
+      {
+        id: 'macd',
+        name: 'MACD',
+        shortName: 'MACD',
+        type: 'macd',
+        defaultParams: { fast: 12, slow: 26, signal: 9 },
+        paramSchema: [
+          { key: 'fast', labelKey: 'indicatorIde.editor.fastLine', type: 'number', min: 1, max: 100, step: 1 },
+          { key: 'slow', labelKey: 'indicatorIde.editor.slowLine', type: 'number', min: 2, max: 200, step: 1 },
+          { key: 'signal', labelKey: 'indicatorIde.editor.signalLine', type: 'number', min: 1, max: 100, step: 1 }
+        ]
+      },
+      {
+        id: 'bb',
+        name: '布林带 (Bollinger Bands)',
+        shortName: 'BB',
+        type: 'band',
+        defaultParams: { length: 20, mult: 2 },
+        paramSchema: [
+          { key: 'length', labelKey: 'indicatorIde.editor.period', type: 'number', min: 1, max: 300, step: 1 },
+          { key: 'mult', labelKey: 'indicatorIde.editor.multiplier', type: 'number', min: 0.1, max: 10, step: 0.1, precision: 1 }
+        ]
+      },
+      {
+        id: 'atr',
+        name: 'ATR (平均真实波幅)',
+        shortName: 'ATR',
+        type: 'line',
+        defaultParams: { period: 14 },
+        paramSchema: [{ key: 'period', labelKey: 'indicatorIde.editor.period', type: 'number', min: 1, max: 200, step: 1 }]
+      },
+      {
+        id: 'cci',
+        name: 'CCI (商品通道指数)',
+        shortName: 'CCI',
+        type: 'line',
+        defaultParams: { length: 20 },
+        paramSchema: [{ key: 'length', labelKey: 'indicatorIde.editor.period', type: 'number', min: 1, max: 200, step: 1 }]
+      },
+      {
+        id: 'williams',
+        name: 'Williams %R (威廉指标)',
+        shortName: 'W%R',
+        type: 'line',
+        defaultParams: { length: 14 },
+        paramSchema: [{ key: 'length', labelKey: 'indicatorIde.editor.period', type: 'number', min: 1, max: 200, step: 1 }]
+      },
+      {
+        id: 'mfi',
+        name: 'MFI (资金流量指标)',
+        shortName: 'MFI',
+        type: 'line',
+        defaultParams: { length: 14 },
+        paramSchema: [{ key: 'length', labelKey: 'indicatorIde.editor.period', type: 'number', min: 1, max: 200, step: 1 }]
+      },
+      {
+        id: 'adx',
+        name: 'ADX (平均趋向指数)',
+        shortName: 'ADX',
+        type: 'adx',
+        defaultParams: { length: 14 },
+        paramSchema: [{ key: 'length', labelKey: 'indicatorIde.editor.period', type: 'number', min: 1, max: 200, step: 1 }]
+      },
+      { id: 'obv', name: 'OBV (能量潮)', shortName: 'OBV', type: 'line', defaultParams: {}, paramSchema: [] },
+      {
+        id: 'adosc',
+        name: 'ADOSC (积累/派发振荡器)',
+        shortName: 'ADOSC',
+        type: 'line',
+        defaultParams: { fast: 3, slow: 10 },
+        paramSchema: [
+          { key: 'fast', labelKey: 'indicatorIde.editor.fastLine', type: 'number', min: 1, max: 100, step: 1 },
+          { key: 'slow', labelKey: 'indicatorIde.editor.slowLine', type: 'number', min: 2, max: 200, step: 1 }
+        ]
+      },
+      { id: 'ad', name: 'AD (积累/派发线)', shortName: 'AD', type: 'line', defaultParams: {}, paramSchema: [] },
+      {
+        id: 'kdj',
+        name: 'KDJ (随机指标)',
+        shortName: 'KDJ',
+        type: 'line',
+        defaultParams: { period: 9, k: 3, d: 3 },
+        paramSchema: [
+          { key: 'period', labelKey: 'indicatorIde.editor.period', type: 'number', min: 1, max: 100, step: 1 },
+          { key: 'k', labelKey: 'indicatorIde.editor.kSmoothing', type: 'number', min: 1, max: 20, step: 1 },
+          { key: 'd', labelKey: 'indicatorIde.editor.dSmoothing', type: 'number', min: 1, max: 20, step: 1 }
+        ]
+      }
     ])
+
+    const getIndicatorTemplate = (indicatorId) => {
+      return indicatorButtons.value.find(item => item.id === indicatorId) || null
+    }
+
+    const normalizeIndicatorParams = (template, rawParams = {}) => {
+      const params = { ...(template?.defaultParams || {}) }
+      const schema = (template && Array.isArray(template.paramSchema)) ? template.paramSchema : []
+      schema.forEach(field => {
+        const rawValue = rawParams[field.key]
+        const fallback = params[field.key]
+        let nextValue = rawValue != null && rawValue !== '' ? Number(rawValue) : fallback
+        if (Number.isNaN(nextValue)) nextValue = fallback
+        if (field.min != null && nextValue < field.min) nextValue = field.min
+        if (field.max != null && nextValue > field.max) nextValue = field.max
+        if (field.precision != null && typeof nextValue === 'number') {
+          nextValue = Number(nextValue.toFixed(field.precision))
+        } else if (typeof nextValue === 'number' && Number.isInteger(field.step || 1)) {
+          nextValue = Math.round(nextValue)
+        }
+        params[field.key] = nextValue
+      })
+      return params
+    }
+
+    const createIndicatorInstanceId = (indicatorId) => {
+      return `${indicatorId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    }
+
+    const normalizeIndicatorStyle = (style = {}, fallbackColor = '') => {
+      const lineWidth = Math.max(1, Math.min(6, parseInt(style.lineWidth, 10) || 2))
+      return {
+        color: String(style.color || fallbackColor || '').trim() || fallbackColor || '#1890ff',
+        lineWidth
+      }
+    }
+
+    const pickNextDefaultParams = (template, existingIndicators = []) => {
+      const baseParams = normalizeIndicatorParams(template, template?.defaultParams || {})
+      if (!template || !template.id) return baseParams
+      const sameType = (existingIndicators || []).filter(item => item && item.id === template.id)
+      if (!sameType.length) return baseParams
+
+      if (template.id === 'ema' || template.id === 'sma') {
+        const preferred = [10, 20, 60, 120, 250]
+        const used = new Set(sameType.map(item => Number(item?.params?.length || item?.params?.period || 0)).filter(Boolean))
+        const candidate = preferred.find(value => !used.has(value))
+        if (candidate) {
+          return {
+            ...baseParams,
+            length: candidate
+          }
+        }
+        const maxUsed = Math.max(...Array.from(used))
+        return {
+          ...baseParams,
+          length: maxUsed > 0 ? maxUsed + 10 : (baseParams.length || 20)
+        }
+      }
+
+      return baseParams
+    }
+
+    const formatIndicatorInstanceLabel = (indicator) => {
+      if (!indicator) return ''
+      const template = getIndicatorTemplate(indicator.id)
+      const params = normalizeIndicatorParams(template, indicator.params || {})
+      switch (indicator.id) {
+        case 'sma':
+        case 'ema':
+        case 'rsi':
+        case 'cci':
+        case 'mfi':
+        case 'adx':
+        case 'williams':
+          return `${template ? template.shortName : indicator.id.toUpperCase()}(${params.length})`
+        case 'atr':
+          return `ATR(${params.period})`
+        case 'macd':
+          return `MACD(${params.fast}, ${params.slow}, ${params.signal})`
+        case 'bb':
+          return `BB(${params.length}, ${params.mult})`
+        case 'adosc':
+          return `ADOSC(${params.fast}, ${params.slow})`
+        case 'kdj':
+          return `KDJ(${params.period}, ${params.k}, ${params.d})`
+        default:
+          return template ? template.shortName : indicator.id.toUpperCase()
+      }
+    }
+
+    const activePresetIndicators = computed(() => {
+      return (props.activeIndicators || []).filter(item => item && item.id && item.id !== 'selected-python-indicator' && item.type !== 'python')
+    })
+
+    const indicatorEditorVisible = ref(false)
+    const indicatorEditorSaving = ref(false)
+    const indicatorEditorTargetId = ref('')
+    const indicatorEditorForm = reactive({})
+
+    const indicatorEditorTarget = computed(() => {
+      return activePresetIndicators.value.find(item => (item.instanceId || item.id) === indicatorEditorTargetId.value) || null
+    })
+
+    const indicatorEditorTemplate = computed(() => {
+      return indicatorEditorTarget.value ? getIndicatorTemplate(indicatorEditorTarget.value.id) : null
+    })
+
+    const indicatorEditorSchema = computed(() => {
+      return indicatorEditorTemplate.value && Array.isArray(indicatorEditorTemplate.value.paramSchema)
+        ? indicatorEditorTemplate.value.paramSchema.map(field => ({
+            ...field,
+            label: field.labelKey ? proxy.$t(field.labelKey) : field.label
+          }))
+        : []
+    })
+
+    const indicatorEditorModalWrapClass = computed(() => {
+      return chartTheme.value === 'dark' ? 'indicator-editor-modal indicator-editor-modal--dark' : 'indicator-editor-modal'
+    })
+
+    const indicatorEditorTitle = computed(() => {
+      return indicatorEditorTarget.value
+        ? `${proxy.$t('indicatorIde.editor.edit')} ${formatIndicatorInstanceLabel(indicatorEditorTarget.value)}`
+        : proxy.$t('indicatorIde.editor.editParams')
+    })
 
     // 检查指标是否激活
     const isIndicatorActive = (indicatorId) => {
@@ -387,6 +689,105 @@ export default {
           indicator: indicatorToAdd
         })
       }
+    }
+
+    const handleIndicatorButtonClick = (indicator) => {
+      if (!indicator || !indicator.id) return
+      const fallbackColor = getIndicatorColor(activePresetIndicators.value.length)
+      const nextParams = pickNextDefaultParams(indicator, activePresetIndicators.value)
+      emit('indicator-toggle', {
+        action: 'add',
+        indicator: {
+          ...indicator,
+          instanceId: createIndicatorInstanceId(indicator.id),
+          params: nextParams,
+          style: normalizeIndicatorStyle({}, fallbackColor),
+          visible: true,
+          calculate: null
+        }
+      })
+    }
+
+    const openIndicatorEditor = (indicator) => {
+      if (!indicator || !indicator.id) return
+      const template = getIndicatorTemplate(indicator.id)
+      const indicatorIndex = activePresetIndicators.value.findIndex(item => (item.instanceId || item.id) === (indicator.instanceId || indicator.id))
+      const fallbackColor = indicator.style?.color || getIndicatorColor(indicatorIndex >= 0 ? indicatorIndex : 0)
+      indicatorEditorTargetId.value = indicator.instanceId || indicator.id
+      const nextParams = normalizeIndicatorParams(template, indicator.params || {})
+      Object.keys(indicatorEditorForm).forEach(key => {
+        delete indicatorEditorForm[key]
+      })
+      Object.keys(nextParams).forEach(key => {
+        indicatorEditorForm[key] = nextParams[key]
+      })
+      indicatorEditorForm._styleColor = normalizeIndicatorStyle(indicator.style || {}, fallbackColor).color
+      indicatorEditorForm._styleLineWidth = normalizeIndicatorStyle(indicator.style || {}, fallbackColor).lineWidth
+      indicatorEditorVisible.value = true
+    }
+
+    const closeIndicatorEditor = () => {
+      indicatorEditorVisible.value = false
+      indicatorEditorTargetId.value = ''
+      indicatorEditorSaving.value = false
+      Object.keys(indicatorEditorForm).forEach(key => {
+        delete indicatorEditorForm[key]
+      })
+    }
+
+    const removeIndicatorInstance = (indicator) => {
+      if (!indicator || !indicator.id) return
+      emit('indicator-toggle', {
+        action: 'remove',
+        indicator: { id: indicator.id, instanceId: indicator.instanceId || indicator.id }
+      })
+      if (indicatorEditorTargetId.value === (indicator.instanceId || indicator.id)) {
+        closeIndicatorEditor()
+      }
+    }
+
+    const toggleIndicatorVisibility = (indicator) => {
+      if (!indicator || !indicator.id) return
+      emit('indicator-toggle', {
+        action: 'update',
+        indicator: {
+          ...indicator,
+          instanceId: indicator.instanceId || indicator.id,
+          visible: indicator.visible === false
+        }
+      })
+    }
+
+    const applyIndicatorEditor = () => {
+      const indicator = indicatorEditorTarget.value
+      const template = indicatorEditorTemplate.value
+      if (!indicator || !template) {
+        closeIndicatorEditor()
+        return
+      }
+      const nextParams = normalizeIndicatorParams(template, indicatorEditorForm)
+      if (Object.prototype.hasOwnProperty.call(nextParams, 'fast') &&
+          Object.prototype.hasOwnProperty.call(nextParams, 'slow') &&
+          Number(nextParams.fast) >= Number(nextParams.slow)) {
+        proxy.$message.warning(proxy.$t('indicatorIde.editor.fastLessThanSlow'))
+        return
+      }
+      const nextStyle = normalizeIndicatorStyle({
+        color: indicatorEditorForm._styleColor,
+        lineWidth: indicatorEditorForm._styleLineWidth
+      }, indicator.style?.color || getIndicatorColor(0))
+      indicatorEditorSaving.value = true
+      emit('indicator-toggle', {
+        action: 'update',
+        indicator: {
+          ...indicator,
+          instanceId: indicator.instanceId || indicator.id,
+          params: nextParams,
+          style: nextStyle,
+          visible: indicator.visible !== false
+        }
+      })
+      closeIndicatorEditor()
     }
 
     // Pyodide 相关
@@ -2928,11 +3329,28 @@ registerOverlay({
 
       // 转换数据格式（KLineChart 需要内部格式用于计算）
       const internalData = convertToInternalFormat(klineData.value)
+      const mainPaneOverlayFigures = []
+      const mainPaneOverlayCalcEntries = []
+      const mainPaneOverlaySignatureParts = []
+      const addMainPaneOverlayEntry = ({ signature, figures, calc }) => {
+        if (signature) {
+          mainPaneOverlaySignatureParts.push(String(signature))
+        }
+        if (Array.isArray(figures) && figures.length) {
+          mainPaneOverlayFigures.push(...figures)
+        }
+        if (typeof calc === 'function') {
+          mainPaneOverlayCalcEntries.push(calc)
+        }
+      }
 
       // 遍历所有激活的指标
       for (let idx = 0; idx < props.activeIndicators.length; idx++) {
         const indicator = props.activeIndicators[idx]
         try {
+          if (indicator && indicator.visible === false) {
+            continue
+          }
           // 处理 Python 指标
           if (indicator.type === 'python') {
             if (!indicator.code) continue
@@ -3308,41 +3726,46 @@ registerOverlay({
                     }
 
                     try {
-                      // 注册合并的自定义指标
-                      const registered = registerCustomIndicator(
-                        customIndicatorName,
-                        (kLineDataList) => {
-                          const result = []
-                          for (let i = 0; i < kLineDataList.length; i++) {
-                            const dataPoint = {}
-                            for (const figureKey in plotDataMap) {
-                              const plotData = plotDataMap[figureKey]
-                              dataPoint[figureKey] = i < plotData.length ? plotData[i] : null
+                      if (allOverlay) {
+                        addMainPaneOverlayEntry({
+                          signature: `${customIndicatorName}_${idx}`,
+                          figures,
+                          calc: () => {
+                            const result = []
+                            for (let i = 0; i < internalData.length; i++) {
+                              const dataPoint = {}
+                              for (const figureKey in plotDataMap) {
+                                const plotData = plotDataMap[figureKey]
+                                dataPoint[figureKey] = i < plotData.length ? plotData[i] : null
+                              }
+                              result.push(dataPoint)
                             }
-                            result.push(dataPoint)
+                            return result
                           }
-                          return result
-                        },
-                        figures,
-                        [],
-                        2,
-                        allOverlay
-                      )
+                        })
+                      } else {
+                        // 注册合并的自定义指标
+                        const registered = registerCustomIndicator(
+                          customIndicatorName,
+                          (kLineDataList) => {
+                            const result = []
+                            for (let i = 0; i < kLineDataList.length; i++) {
+                              const dataPoint = {}
+                              for (const figureKey in plotDataMap) {
+                                const plotData = plotDataMap[figureKey]
+                                dataPoint[figureKey] = i < plotData.length ? plotData[i] : null
+                              }
+                              result.push(dataPoint)
+                            }
+                            return result
+                          },
+                          figures,
+                          [],
+                          2,
+                          false
+                        )
 
-                      if (registered) {
-                        if (allOverlay) {
-                          // 主图指标
-                          const paneId = chartRef.value.createIndicator(
-                            customIndicatorName,
-                            false,
-                            { id: 'candle_pane' }
-                          )
-                          if (paneId) {
-                            addedIndicatorIds.value.push({ paneId, name: customIndicatorName })
-                          } else {
-                            addedIndicatorIds.value.push({ paneId: 'candle_pane', name: customIndicatorName })
-                          }
-                        } else {
+                        if (registered) {
                           // 副图指标
                           const indicatorId = chartRef.value.createIndicator(
                             customIndicatorName,
@@ -3373,115 +3796,146 @@ registerOverlay({
           // 注意：calculate 函数可能为 null，因为指标的计算逻辑在 updateIndicators 中通过 id 判断
           // 所以这里不检查 calculate，而是直接根据 indicator.id 处理
 
-          const color = getIndicatorColor(idx)
+          const indicatorStyle = normalizeIndicatorStyle(indicator.style || {}, getIndicatorColor(idx))
+          const color = indicatorStyle.color
+          const lineWidth = indicatorStyle.lineWidth
+          const indicatorInstanceKey = String(indicator.instanceId || `${indicator.id}_${idx}`).replace(/[^a-zA-Z0-9_]/g, '_')
+          const buildUniqueIndicatorName = (baseName) => `${baseName}_${indicatorInstanceKey}`
+          const buildLineFigure = (key, title, figureColor = color, width = lineWidth) => ({
+            key,
+            title,
+            type: 'line',
+            color: figureColor,
+            styles: () => ({
+              color: figureColor,
+              size: width,
+              style: 'solid'
+            })
+          })
+          const buildBarFigure = (key, title, figureColor = color) => ({
+            key,
+            title,
+            type: 'bar',
+            color: figureColor,
+            styles: () => ({
+              color: figureColor
+            })
+          })
 
           // 根据指标类型创建 KLineChart 指标
           if (indicator.id === 'sma' || indicator.id === 'ema') {
             const maType = indicator.id === 'sma' ? 'SMA' : 'EMA'
             const period = indicator.params?.length || indicator.params?.period || 20
-            const customIndicatorName = `${maType}_${period}`
             const figureKey = maType.toLowerCase()
             const calcPeriod = period
 
             try {
-              const registered = registerCustomIndicator(
-                customIndicatorName,
-                (kLineDataList, indicator) => {
-                  const p = indicator.calcParams[0] || calcPeriod
+              addMainPaneOverlayEntry({
+                signature: buildUniqueIndicatorName(`${maType}_${period}`),
+                figures: [buildLineFigure(`${figureKey}_${indicatorInstanceKey}`, `${maType}(${period})`, color, lineWidth)],
+                calc: (kLineDataList) => {
+                  const p = calcPeriod
                   // calculateSMA/EMA 需要传入包含 close 属性的对象数组，而不是数字数组
                   const values = maType === 'SMA'
                     ? calculateSMA(kLineDataList, p)
                     : calculateEMA(kLineDataList, p)
-                  return values.map(v => ({ [figureKey]: v }))
-                },
-                [{ key: figureKey, title: `${maType}(${period})`, type: 'line' }],
-                [period],
-                2,
-                true // shouldOverlay: true 表示主图指标
-              )
-
-              if (registered) {
-                // 创建指标
-                const paneId = chartRef.value.createIndicator(
-                  customIndicatorName,
-                  false, // isStack
-                  { id: 'candle_pane' }
-                )
-
-                if (paneId) {
-                  addedIndicatorIds.value.push({ paneId, name: customIndicatorName })
-                } else {
-                  // 如果返回 null (主图指标可能返回 null)，也记录下来
-                  addedIndicatorIds.value.push({ paneId: 'candle_pane', name: customIndicatorName })
+                  return values.map(v => ({ [`${figureKey}_${indicatorInstanceKey}`]: v }))
                 }
-              }
+              })
             } catch (err) {
             }
           } else if (indicator.id === 'macd') {
-            // MACD 默认画在副图
-            const indicatorId = chartRef.value.createIndicator('MACD', false, { height: 100, dragEnabled: true })
-            if (indicatorId) {
-              addedIndicatorIds.value.push({ paneId: indicatorId, name: 'MACD' })
-            }
-          } else if (indicator.id === 'rsi') {
-             const indicatorId = chartRef.value.createIndicator('RSI', false, { height: 100, dragEnabled: true })
-             if (indicatorId) {
-               addedIndicatorIds.value.push({ paneId: indicatorId, name: 'RSI' })
-             }
-          } else if (indicator.id === 'bollinger_bands' || indicator.id === 'bb') {
-            // 布林带需要注册自定义指标
-            const length = indicator.params?.length || 20
-            const mult = indicator.params?.mult || 2
-            const customIndicatorName = `BOLL_${length}_${mult}`
-
+            const fast = indicator.params?.fast || 12
+            const slow = indicator.params?.slow || 26
+            const signal = indicator.params?.signal || 9
+            const customIndicatorName = buildUniqueIndicatorName(`MACD_${fast}_${slow}_${signal}`)
             try {
               const registered = registerCustomIndicator(
                 customIndicatorName,
                 (kLineDataList, indicator) => {
-                  const length = indicator.calcParams[0] || 20
-                  const mult = indicator.calcParams[1] || 2
+                  const fast = indicator.calcParams[0] || 12
+                  const slow = indicator.calcParams[1] || 26
+                  const signal = indicator.calcParams[2] || 9
+                  const macdValues = calculateMACD(kLineDataList, fast, slow, signal)
+                  return macdValues.macd.map((value, i) => ({
+                    macd: value,
+                    signal: macdValues.signal[i],
+                    histogram: macdValues.histogram[i]
+                  }))
+                },
+                [
+                  buildLineFigure('macd', `MACD(${fast},${slow})`, color, lineWidth),
+                  buildLineFigure('signal', `SIGNAL(${signal})`, '#fa8c16', lineWidth),
+                  buildBarFigure('histogram', 'HIST', '#722ed1')
+                ],
+                [fast, slow, signal]
+              )
+              if (registered) {
+                const indicatorId = chartRef.value.createIndicator(customIndicatorName, false, { height: 100, dragEnabled: true })
+                if (indicatorId) {
+                  addedIndicatorIds.value.push({ paneId: indicatorId, name: customIndicatorName })
+                }
+              }
+            } catch (err) {
+            }
+          } else if (indicator.id === 'rsi') {
+            const length = indicator.params?.length || 14
+            const customIndicatorName = buildUniqueIndicatorName(`RSI_${length}`)
+            try {
+              const registered = registerCustomIndicator(
+                customIndicatorName,
+                (kLineDataList, indicator) => {
+                  const length = indicator.calcParams[0] || 14
+                  const rsiValues = calculateRSI(kLineDataList, length)
+                  return rsiValues.map(value => ({ rsi: value }))
+                },
+                [buildLineFigure('rsi', `RSI(${length})`, color, lineWidth)],
+                [length]
+              )
+              if (registered) {
+                const indicatorId = chartRef.value.createIndicator(customIndicatorName, false, { height: 100, dragEnabled: true })
+                if (indicatorId) {
+                  addedIndicatorIds.value.push({ paneId: indicatorId, name: customIndicatorName })
+                }
+              }
+            } catch (err) {
+            }
+          } else if (indicator.id === 'bollinger_bands' || indicator.id === 'bb') {
+            // 布林带需要注册自定义指标
+            const length = indicator.params?.length || 20
+            const mult = indicator.params?.mult || 2
+
+            try {
+              addMainPaneOverlayEntry({
+                signature: buildUniqueIndicatorName(`BOLL_${length}_${mult}`),
+                figures: [
+                  buildLineFigure(`upper_${indicatorInstanceKey}`, `上轨(${length},${mult})`, color, lineWidth),
+                  buildLineFigure(`middle_${indicatorInstanceKey}`, `中轨(${length})`, '#8c8c8c', lineWidth),
+                  buildLineFigure(`lower_${indicatorInstanceKey}`, `下轨(${length},${mult})`, color, lineWidth)
+                ],
+                calc: (kLineDataList) => {
+                  const currentLength = length
+                  const currentMult = mult
                   // calculateBollingerBands 需要传入包含 close 属性的对象数组
-                  const bbResult = calculateBollingerBands(kLineDataList, length, mult)
+                  const bbResult = calculateBollingerBands(kLineDataList, currentLength, currentMult)
                   // KLineChart 需要返回对象数组，每个对象的键对应 figures 的 key
                   const result = []
                   for (let i = 0; i < bbResult.length; i++) {
                     result.push({
-                      upper: bbResult[i]?.upper ?? null,
-                      middle: bbResult[i]?.middle ?? null,
-                      lower: bbResult[i]?.lower ?? null
+                      [`upper_${indicatorInstanceKey}`]: bbResult[i]?.upper ?? null,
+                      [`middle_${indicatorInstanceKey}`]: bbResult[i]?.middle ?? null,
+                      [`lower_${indicatorInstanceKey}`]: bbResult[i]?.lower ?? null
                     })
                   }
                   return result
-                },
-                [
-                  { key: 'upper', title: `上轨(${length},${mult})`, type: 'line' },
-                  { key: 'middle', title: `中轨(${length})`, type: 'line' },
-                  { key: 'lower', title: `下轨(${length},${mult})`, type: 'line' }
-                ],
-                [length, mult], // calcParams
-                -1, // precision: 使用动态精度
-                true // shouldOverlay: true 表示主图指标
-              )
-
-              if (registered) {
-                // 创建指标（主图指标）
-                const paneId = chartRef.value.createIndicator(
-                  customIndicatorName,
-                  false, // isStack: false 表示不堆叠
-                  { id: 'candle_pane' }
-                )
-                if (paneId) {
-                  addedIndicatorIds.value.push({ paneId, name: customIndicatorName })
-                } else {
-                  addedIndicatorIds.value.push({ paneId: 'candle_pane', name: customIndicatorName })
                 }
-              }
+              })
             } catch (err) {
             }
           } else if (indicator.id === 'atr') {
             // ATR 需要注册自定义指标
             const period = indicator.params?.period || indicator.params?.length || 14
-            const customIndicatorName = `ATR_${period}`
+            const customIndicatorName = buildUniqueIndicatorName(`ATR_${period}`)
 
             try {
               const registered = registerCustomIndicator(
@@ -3497,12 +3951,7 @@ registerOverlay({
                   // 转换为 KLineChart 需要的格式：返回对象数组
                   return atrValues.map(value => ({ atr: value }))
                 },
-                [{
-                  key: 'atr',
-                  title: `ATR(${period})`,
-                  type: 'line',
-                  color: color
-                }],
+                [buildLineFigure('atr', `ATR(${period})`, color, lineWidth)],
                 [period]
               )
 
@@ -3517,7 +3966,7 @@ registerOverlay({
           } else if (indicator.id === 'williams' || indicator.id === 'williams_r') {
             // Williams %R 需要注册自定义指标
             const length = indicator.params?.length || 14
-            const customIndicatorName = `WPR_${length}`
+            const customIndicatorName = buildUniqueIndicatorName(`WPR_${length}`)
 
             try {
               const registered = registerCustomIndicator(
@@ -3533,12 +3982,7 @@ registerOverlay({
                   // 转换为 KLineChart 需要的格式：返回对象数组
                   return wrValues.map(value => ({ wr: value }))
                 },
-                [{
-                  key: 'wr',
-                  title: `W%R(${length})`,
-                  type: 'line',
-                  color: color
-                }],
+                [buildLineFigure('wr', `W%R(${length})`, color, lineWidth)],
                 [length]
               )
 
@@ -3553,7 +3997,7 @@ registerOverlay({
           } else if (indicator.id === 'mfi') {
             // MFI 需要注册自定义指标
             const length = indicator.params?.length || 14
-            const customIndicatorName = `MFI_${length}`
+            const customIndicatorName = buildUniqueIndicatorName(`MFI_${length}`)
 
             try {
               const registered = registerCustomIndicator(
@@ -3570,12 +4014,7 @@ registerOverlay({
                   // 转换为 KLineChart 需要的格式：返回对象数组
                   return mfiValues.map(value => ({ mfi: value }))
                 },
-                [{
-                  key: 'mfi',
-                  title: `MFI(${length})`,
-                  type: 'line',
-                  color: color
-                }],
+                [buildLineFigure('mfi', `MFI(${length})`, color, lineWidth)],
                 [length]
               )
 
@@ -3590,7 +4029,7 @@ registerOverlay({
           } else if (indicator.id === 'cci') {
             // CCI 需要注册自定义指标
             const length = indicator.params?.length || 20
-            const customIndicatorName = `CCI_${length}`
+            const customIndicatorName = buildUniqueIndicatorName(`CCI_${length}`)
 
             try {
               const registered = registerCustomIndicator(
@@ -3606,12 +4045,7 @@ registerOverlay({
                   // 转换为 KLineChart 需要的格式：返回对象数组
                   return cciValues.map(value => ({ cci: value }))
                 },
-                [{
-                  key: 'cci',
-                  title: `CCI(${length})`,
-                  type: 'line',
-                  color: color
-                }],
+                [buildLineFigure('cci', `CCI(${length})`, color, lineWidth)],
                 [length]
               )
 
@@ -3626,7 +4060,7 @@ registerOverlay({
           } else if (indicator.id === 'adx') {
             // ADX 需要注册自定义指标
             const length = indicator.params?.length || 14
-            const customIndicatorName = `ADX_${length}`
+            const customIndicatorName = buildUniqueIndicatorName(`ADX_${length}`)
 
             try {
               const registered = registerCustomIndicator(
@@ -3642,12 +4076,7 @@ registerOverlay({
                   // 转换为 KLineChart 需要的格式：返回对象数组
                   return result.adx.map(value => ({ adx: value }))
                 },
-                [{
-                  key: 'adx',
-                  title: `ADX(${length})`,
-                  type: 'line',
-                  color: color
-                }],
+                [buildLineFigure('adx', `ADX(${length})`, color, lineWidth)],
                 [length]
               )
 
@@ -3661,7 +4090,7 @@ registerOverlay({
             }
           } else if (indicator.id === 'obv') {
             // OBV 需要注册自定义指标
-            const customIndicatorName = 'OBV'
+            const customIndicatorName = buildUniqueIndicatorName('OBV')
 
             try {
               const registered = registerCustomIndicator(
@@ -3674,12 +4103,7 @@ registerOverlay({
                   const obvValues = calculateOBV(data)
                   return obvValues.map(value => ({ obv: value }))
                 },
-                [{
-                  key: 'obv',
-                  title: 'OBV',
-                  type: 'line',
-                  color: color
-                }],
+                [buildLineFigure('obv', 'OBV', color, lineWidth)],
                 []
               )
 
@@ -3695,7 +4119,7 @@ registerOverlay({
             // ADOSC 需要注册自定义指标
             const fast = indicator.params?.fast || 3
             const slow = indicator.params?.slow || 10
-            const customIndicatorName = `ADOSC_${fast}_${slow}`
+            const customIndicatorName = buildUniqueIndicatorName(`ADOSC_${fast}_${slow}`)
 
             try {
               const registered = registerCustomIndicator(
@@ -3712,12 +4136,7 @@ registerOverlay({
                   const adoscValues = calculateADOSC(data, fast, slow)
                   return adoscValues.map(value => ({ adosc: value }))
                 },
-                [{
-                  key: 'adosc',
-                  title: `ADOSC(${fast},${slow})`,
-                  type: 'line',
-                  color: color
-                }],
+                [buildLineFigure('adosc', `ADOSC(${fast},${slow})`, color, lineWidth)],
                 [fast, slow]
               )
 
@@ -3731,7 +4150,7 @@ registerOverlay({
             }
           } else if (indicator.id === 'ad') {
             // AD 需要注册自定义指标
-            const customIndicatorName = 'AD'
+            const customIndicatorName = buildUniqueIndicatorName('AD')
 
             try {
               const registered = registerCustomIndicator(
@@ -3746,12 +4165,7 @@ registerOverlay({
                   const adValues = calculateAD(data)
                   return adValues.map(value => ({ ad: value }))
                 },
-                [{
-                  key: 'ad',
-                  title: 'AD',
-                  type: 'line',
-                  color: color
-                }],
+                [buildLineFigure('ad', 'AD', color, lineWidth)],
                 []
               )
 
@@ -3768,7 +4182,7 @@ registerOverlay({
             const period = indicator.params?.period || 9
             const kPeriod = indicator.params?.k || 3
             const dPeriod = indicator.params?.d || 3
-            const customIndicatorName = `KDJ_${period}_${kPeriod}_${dPeriod}`
+            const customIndicatorName = buildUniqueIndicatorName(`KDJ_${period}_${kPeriod}_${dPeriod}`)
 
             try {
               const registered = registerCustomIndicator(
@@ -3790,9 +4204,9 @@ registerOverlay({
                   }))
                 },
                 [
-                  { key: 'k', title: `K(${period},${kPeriod})`, type: 'line', color: '#FF6B6B' },
-                  { key: 'd', title: `D(${dPeriod})`, type: 'line', color: '#4ECDC4' },
-                  { key: 'j', title: `J`, type: 'line', color: '#95E1D3' }
+                  buildLineFigure('k', `K(${period},${kPeriod})`, color, lineWidth),
+                  buildLineFigure('d', `D(${dPeriod})`, '#4ECDC4', lineWidth),
+                  buildLineFigure('j', 'J', '#95E1D3', lineWidth)
                 ],
                 [period, kPeriod, dPeriod]
               )
@@ -3817,6 +4231,39 @@ registerOverlay({
             }
           }
           // ... 其他指标 ...
+        } catch (e) {
+        }
+      }
+      if (mainPaneOverlayFigures.length > 0) {
+        try {
+          const combinedName = `QD_MAIN_OVERLAY_${mainPaneOverlaySignatureParts.join('_').replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 120)}`
+          const registered = registerCustomIndicator(
+            combinedName,
+            (kLineDataList) => {
+              const mergedResults = Array.from({ length: kLineDataList.length }, () => ({}))
+              mainPaneOverlayCalcEntries.forEach(calc => {
+                const partial = calc(kLineDataList) || []
+                for (let i = 0; i < mergedResults.length; i++) {
+                  if (partial[i] && typeof partial[i] === 'object') {
+                    Object.assign(mergedResults[i], partial[i])
+                  }
+                }
+              })
+              return mergedResults
+            },
+            mainPaneOverlayFigures,
+            [],
+            -1,
+            true
+          )
+          if (registered) {
+            const paneId = chartRef.value.createIndicator(combinedName, true, { id: 'candle_pane' })
+            if (paneId) {
+              addedIndicatorIds.value.push({ paneId, name: combinedName })
+            } else {
+              addedIndicatorIds.value.push({ paneId: 'candle_pane', name: combinedName })
+            }
+          }
         } catch (e) {
         }
       }
@@ -3865,6 +4312,12 @@ registerOverlay({
             updateIndicators()
           }
         })
+      }
+      if (indicatorEditorVisible.value && indicatorEditorTargetId.value) {
+        const current = (newVal || []).find(item => item && (item.instanceId || item.id) === indicatorEditorTargetId.value)
+        if (!current) {
+          closeIndicatorEditor()
+        }
       }
     }, { deep: true })
 
@@ -4051,8 +4504,22 @@ registerOverlay({
       executePythonStrategy,
       parsePythonStrategy,
       indicatorButtons,
+      activePresetIndicators,
+      handleIndicatorButtonClick,
       isIndicatorActive,
       toggleIndicator,
+      indicatorEditorVisible,
+      indicatorEditorSaving,
+      indicatorEditorForm,
+      indicatorEditorSchema,
+      indicatorEditorTitle,
+      indicatorEditorModalWrapClass,
+      formatIndicatorInstanceLabel,
+      openIndicatorEditor,
+      closeIndicatorEditor,
+      applyIndicatorEditor,
+      removeIndicatorInstance,
+      toggleIndicatorVisibility,
       drawingTools,
       activeDrawingTool,
       selectDrawingTool,
@@ -4185,6 +4652,181 @@ registerOverlay({
   display: none; /* Chrome Safari */
   width: 0;
   height: 0;
+}
+
+.indicator-active-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 12px 10px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.chart-left.theme-dark .indicator-active-bar {
+  background: #141414;
+  border-bottom-color: #2a2a2a;
+}
+
+.indicator-active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #f7faff;
+  border: 1px solid #d6e4ff;
+  color: #1f1f1f;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.indicator-active-chip--hidden {
+  opacity: 0.65;
+  background: #fafafa;
+  border-color: #d9d9d9;
+}
+
+.chart-left.theme-dark .indicator-active-chip {
+  background: rgba(24, 144, 255, 0.12);
+  border-color: rgba(24, 144, 255, 0.28);
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.chart-left.theme-dark .indicator-active-chip--hidden {
+  background: #1f1f1f;
+  border-color: #434343;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.indicator-active-chip__label {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.indicator-active-chip__action {
+  cursor: pointer;
+  color: #8c8c8c;
+  transition: color 0.2s ease;
+}
+
+.indicator-active-chip__action:hover {
+  color: #1890ff;
+}
+
+.chart-left.theme-dark .indicator-active-chip__action {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.chart-left.theme-dark .indicator-active-chip__action:hover {
+  color: #13c2c2;
+}
+
+.indicator-editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.indicator-editor-field__label {
+  margin-bottom: 8px;
+  color: #262626;
+  font-weight: 600;
+}
+
+.indicator-editor-field__hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.indicator-editor-color {
+  width: 100%;
+  height: 36px;
+  padding: 4px;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.chart-left.theme-dark .indicator-editor-color {
+  border-color: #434343;
+  background: #1f1f1f;
+}
+
+.indicator-editor-empty {
+  color: #8c8c8c;
+}
+
+/deep/ .indicator-editor-modal--dark .ant-modal-content {
+  background: #1f1f1f;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+}
+
+/deep/ .indicator-editor-modal--dark .ant-modal-header {
+  background: #1f1f1f;
+  border-bottom: 1px solid #303030;
+}
+
+/deep/ .indicator-editor-modal--dark .ant-modal-title {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/deep/ .indicator-editor-modal--dark .ant-modal-close {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/deep/ .indicator-editor-modal--dark .ant-modal-close:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/deep/ .indicator-editor-modal--dark .ant-modal-body {
+  background: #1f1f1f;
+}
+
+/deep/ .indicator-editor-modal--dark .ant-modal-footer {
+  background: #1f1f1f;
+  border-top: 1px solid #303030;
+}
+
+/deep/ .indicator-editor-modal--dark .ant-input-number {
+  background: #141414;
+  border-color: #434343;
+}
+
+/deep/ .indicator-editor-modal--dark .ant-input-number-input {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+/deep/ .indicator-editor-modal--dark .ant-input-number-handler-wrap {
+  background: #141414;
+  border-left-color: #303030;
+}
+
+/deep/ .indicator-editor-modal--dark .ant-input-number-handler {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/deep/ .indicator-editor-modal--dark .ant-input-number:hover,
+/deep/ .indicator-editor-modal--dark .ant-input-number-focused {
+  border-color: #177ddc;
+}
+
+/deep/ .indicator-editor-modal--dark .indicator-editor-field__label {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+/deep/ .indicator-editor-modal--dark .indicator-editor-field__hint,
+/deep/ .indicator-editor-modal--dark .indicator-editor-empty {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/deep/ .indicator-editor-modal--dark .indicator-editor-color {
+  background: #141414;
+  border-color: #434343;
 }
 
 /* 图表内容区域 */

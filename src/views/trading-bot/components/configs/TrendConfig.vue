@@ -43,22 +43,13 @@
         @change="emit"
       />
     </a-form-model-item>
-    <a-form-model-item :label="$t('trading-bot.trend.timeframe')">
-      <a-select v-model="form.timeframe" @change="emit">
-        <a-select-option value="1m">1 {{ $t('trading-bot.timeframe.min') }}</a-select-option>
-        <a-select-option value="5m">5 {{ $t('trading-bot.timeframe.min') }}</a-select-option>
-        <a-select-option value="15m">15 {{ $t('trading-bot.timeframe.min') }}</a-select-option>
-        <a-select-option value="1h">1 {{ $t('trading-bot.timeframe.hour') }}</a-select-option>
-        <a-select-option value="4h">4 {{ $t('trading-bot.timeframe.hour') }}</a-select-option>
-        <a-select-option value="1d">1 {{ $t('trading-bot.timeframe.day') }}</a-select-option>
-      </a-select>
-    </a-form-model-item>
     <a-form-model-item :label="$t('trading-bot.trend.direction')">
       <a-radio-group v-model="form.direction" @change="emit">
         <a-radio value="long">{{ $t('trading-bot.trend.longOnly') }}</a-radio>
-        <a-radio value="short">{{ $t('trading-bot.trend.shortOnly') }}</a-radio>
-        <a-radio value="both">{{ $t('trading-bot.trend.bothSides') }}</a-radio>
+        <a-radio value="short" :disabled="isSpotMarket">{{ $t('trading-bot.trend.shortOnly') }}</a-radio>
+        <a-radio value="both" :disabled="isSpotMarket">{{ $t('trading-bot.trend.bothSides') }}</a-radio>
       </a-radio-group>
+      <div v-if="isSpotMarket" class="direction-hint">Spot only supports long trend bots.</div>
     </a-form-model-item>
   </a-form-model>
 </template>
@@ -68,7 +59,8 @@ export default {
   name: 'TrendConfig',
   props: {
     value: { type: Object, default: () => ({}) },
-    initialCapital: { type: Number, default: null }
+    initialCapital: { type: Number, default: null },
+    marketType: { type: String, default: 'swap' }
   },
   data () {
     return {
@@ -77,13 +69,28 @@ export default {
         maType: this.value.maType || 'EMA',
         confirmBars: this.value.confirmBars || 2,
         positionPct: this.value.positionPct || 50,
-        timeframe: this.value.timeframe || '1h',
         direction: this.value.direction || 'long'
       },
       rules: {
         maPeriod: [{ required: true, message: this.$t('trading-bot.trend.maPeriodReq'), trigger: 'change' }],
         confirmBars: [{ required: true, message: this.$t('trading-bot.trend.confirmBarsReq'), trigger: 'change' }],
         positionPct: [{ required: true, message: this.$t('trading-bot.trend.positionPctReq'), trigger: 'change' }]
+      }
+    }
+  },
+  computed: {
+    isSpotMarket () {
+      return this.marketType === 'spot'
+    }
+  },
+  watch: {
+    marketType: {
+      immediate: true,
+      handler (val) {
+        if (val === 'spot' && this.form.direction !== 'long') {
+          this.form.direction = 'long'
+          this.emit()
+        }
       }
     }
   },
@@ -102,3 +109,11 @@ export default {
   }
 }
 </script>
+
+<style lang="less" scoped>
+.direction-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+</style>

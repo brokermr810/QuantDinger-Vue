@@ -188,6 +188,46 @@
                 <a-icon type="loading" spin />
                 {{ aiAdjustingParams ? $t('trading-assistant.editor.aiAdjustingParams') : $t('trading-assistant.editor.generating') }}
               </div>
+              <div
+                v-if="aiDebugSummary"
+                class="ai-debug-card"
+                :class="`ai-debug-card--${aiDebugState()}`"
+              >
+                <div class="ai-debug-card__header">
+                  <div class="ai-debug-card__badge">
+                    <a-icon :type="aiDebugStateIcon()" />
+                  </div>
+                  <div class="ai-debug-card__headline">
+                    <span class="ai-debug-card__tag">AI 质检</span>
+                    <span class="ai-debug-card__title">{{ aiDebugSummary.title }}</span>
+                  </div>
+                  <a-icon type="close" class="ai-debug-card__dismiss" @click="aiDebugSummary = null" />
+                </div>
+                <div class="ai-debug-card__chips">
+                  <span :class="['ai-debug-chip', `ai-debug-chip--${aiDebugState()}`]">{{ aiDebugStateLabel() }}</span>
+                  <span v-if="aiDebugSummary.fixed_messages.length" class="ai-debug-chip ai-debug-chip--success">
+                    <a-icon type="check" style="font-size: 10px;" /> {{ aiDebugSummary.fixed_messages.length }} 已修复
+                  </span>
+                  <span v-if="aiDebugSummary.remaining_messages.length" class="ai-debug-chip ai-debug-chip--warning">
+                    <a-icon type="eye" style="font-size: 10px;" /> {{ aiDebugSummary.remaining_messages.length }} 待关注
+                  </span>
+                </div>
+                <div v-if="aiDebugSummary.returned_text" class="ai-debug-card__body">
+                  {{ aiDebugSummary.returned_text }}
+                </div>
+                <div v-if="aiDebugSummary.fixed_messages.length" class="ai-debug-card__group ai-debug-card__group--fixed">
+                  <div class="ai-debug-card__group-label"><a-icon type="check-circle" /> 已自动修复</div>
+                  <div v-for="(msg, idx) in aiDebugSummary.fixed_messages" :key="`fixed-${idx}`" class="ai-debug-card__item">
+                    <span class="ai-debug-card__bullet ai-debug-card__bullet--green"></span>{{ msg }}
+                  </div>
+                </div>
+                <div v-if="aiDebugSummary.remaining_messages.length" class="ai-debug-card__group ai-debug-card__group--remaining">
+                  <div class="ai-debug-card__group-label"><a-icon type="warning" /> 仍需关注</div>
+                  <div v-for="(msg, idx) in aiDebugSummary.remaining_messages" :key="`remaining-${idx}`" class="ai-debug-card__item">
+                    <span class="ai-debug-card__bullet ai-debug-card__bullet--orange"></span>{{ msg }}
+                  </div>
+                </div>
+              </div>
             </div>
           </a-tab-pane>
 
@@ -230,6 +270,7 @@ export default {
       aiPrompt: '',
       aiGenerating: false,
       aiAdjustingParams: false,
+      aiDebugSummary: null,
       verifying: false,
       editor: null,
       templates: SCRIPT_TEMPLATE_CATALOG,
@@ -497,6 +538,48 @@ def on_bar(ctx, bar):
     applyPromptSuggestion (value) {
       this.aiPrompt = value
     },
+    normalizeAiDebugSummary (summary) {
+      if (!summary || typeof summary !== 'object') return null
+      const fixedMessages = Array.isArray(summary.fixed_messages) ? summary.fixed_messages.filter(Boolean) : []
+      const remainingMessages = Array.isArray(summary.remaining_messages) ? summary.remaining_messages.filter(Boolean) : []
+      const normalized = {
+        title: summary.title ? String(summary.title) : '',
+        returned_text: summary.returned_text ? String(summary.returned_text) : '',
+        fixed_messages: fixedMessages,
+        remaining_messages: remainingMessages
+      }
+      if (!normalized.title && !normalized.returned_text && !fixedMessages.length && !remainingMessages.length) {
+        return null
+      }
+      return normalized
+    },
+    aiDebugAlertType (summary = this.aiDebugSummary) {
+      if (!summary) return 'info'
+      if ((summary.remaining_messages || []).length) return 'warning'
+      if ((summary.fixed_messages || []).length) return 'success'
+      return 'info'
+    },
+    aiDebugState (summary = this.aiDebugSummary) {
+      return this.aiDebugAlertType(summary)
+    },
+    aiDebugStateIcon (summary = this.aiDebugSummary) {
+      const state = this.aiDebugState(summary)
+      if (state === 'warning') return 'exclamation-circle'
+      if (state === 'success') return 'check-circle'
+      return 'info-circle'
+    },
+    aiDebugStateLabel (summary = this.aiDebugSummary) {
+      const state = this.aiDebugState(summary)
+      if (state === 'warning') return '仍有提醒'
+      if (state === 'success') return '自动修复完成'
+      return '质检已通过'
+    },
+    aiDebugStateTagColor (summary = this.aiDebugSummary) {
+      const state = this.aiDebugState(summary)
+      if (state === 'warning') return 'orange'
+      if (state === 'success') return 'green'
+      return 'blue'
+    },
 
     async handleVerify () {
       this.verifying = true
@@ -619,6 +702,7 @@ def on_bar(ctx, bar):
         return
       }
       this.aiGenerating = true
+      this.aiDebugSummary = null
       try {
         const res = await request({
           url: '/api/strategies/ai-generate',
@@ -632,6 +716,7 @@ def on_bar(ctx, bar):
             code: this.getCode()
           }
         })
+        this.aiDebugSummary = this.normalizeAiDebugSummary(res && res.debug && res.debug.human_summary)
         const code = res && typeof res.code === 'string' ? res.code : ''
         if (code) {
           this.setCode(code)
@@ -935,6 +1020,77 @@ def on_bar(ctx, bar):
   text-align: center;
 }
 
+.ai-debug-card {
+  margin-top: 12px;
+  padding: 0;
+  border: 1px solid #e6f4ff;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+  font-size: 12px;
+}
+.ai-debug-card--success { border-color: #b7eb8f; }
+.ai-debug-card--warning { border-color: #ffd591; }
+
+.ai-debug-card__header {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  background: linear-gradient(135deg, rgba(24, 144, 255, 0.06) 0%, transparent 100%);
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+.ai-debug-card--success .ai-debug-card__header { background: linear-gradient(135deg, rgba(82, 196, 26, 0.06) 0%, transparent 100%); }
+.ai-debug-card--warning .ai-debug-card__header { background: linear-gradient(135deg, rgba(250, 140, 22, 0.06) 0%, transparent 100%); }
+
+.ai-debug-card__badge {
+  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+  border-radius: 7px; flex-shrink: 0; font-size: 13px;
+  background: rgba(24, 144, 255, 0.1); color: #1890ff;
+}
+.ai-debug-card--success .ai-debug-card__badge { background: rgba(82, 196, 26, 0.1); color: #389e0d; }
+.ai-debug-card--warning .ai-debug-card__badge { background: rgba(250, 140, 22, 0.1); color: #d46b08; }
+
+.ai-debug-card__headline { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.ai-debug-card__tag {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+  color: #1890ff; white-space: nowrap;
+}
+.ai-debug-card--success .ai-debug-card__tag { color: #389e0d; }
+.ai-debug-card--warning .ai-debug-card__tag { color: #d46b08; }
+
+.ai-debug-card__title {
+  font-size: 12px; font-weight: 600; color: #262626;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ai-debug-card__dismiss {
+  flex-shrink: 0; cursor: pointer; font-size: 12px; color: #bfbfbf;
+  padding: 2px; border-radius: 4px; transition: all 0.15s;
+  &:hover { color: #595959; background: rgba(0,0,0,0.04); }
+}
+
+.ai-debug-card__chips { display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 10px 0; }
+.ai-debug-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600;
+  background: rgba(24, 144, 255, 0.08); color: #1890ff;
+}
+.ai-debug-chip--success { background: rgba(82, 196, 26, 0.08); color: #389e0d; }
+.ai-debug-chip--warning { background: rgba(250, 140, 22, 0.08); color: #d46b08; }
+.ai-debug-chip--info { background: rgba(24, 144, 255, 0.08); color: #1890ff; }
+
+.ai-debug-card__body { padding: 8px 10px 0; line-height: 1.6; color: #595959; }
+
+.ai-debug-card__group { padding: 6px 10px; &:last-child { padding-bottom: 10px; } }
+.ai-debug-card__group-label {
+  font-size: 11px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 4px; color: #389e0d;
+}
+.ai-debug-card__group--remaining .ai-debug-card__group-label { color: #d46b08; }
+
+.ai-debug-card__item {
+  display: flex; align-items: baseline; gap: 6px; padding: 2px 0; font-size: 11px; line-height: 1.5; color: #595959;
+}
+.ai-debug-card__bullet { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+.ai-debug-card__bullet--green { background: #52c41a; }
+.ai-debug-card__bullet--orange { background: #fa8c16; }
+
 .params-empty-guide {
   display: flex;
   align-items: center;
@@ -1038,6 +1194,24 @@ def on_bar(ctx, bar):
   .ai-status {
     color: #40a9ff;
   }
+
+  .ai-debug-card { border-color: #303030; background: #1f1f1f; }
+  .ai-debug-card--success { border-color: rgba(82, 196, 26, 0.25); }
+  .ai-debug-card--warning { border-color: rgba(250, 140, 22, 0.3); }
+  .ai-debug-card__header { background: linear-gradient(135deg, rgba(24, 144, 255, 0.08) 0%, transparent 100%); border-bottom-color: #303030; }
+  .ai-debug-card--success .ai-debug-card__header { background: linear-gradient(135deg, rgba(82, 196, 26, 0.08) 0%, transparent 100%); }
+  .ai-debug-card--warning .ai-debug-card__header { background: linear-gradient(135deg, rgba(250, 140, 22, 0.08) 0%, transparent 100%); }
+  .ai-debug-card__badge { background: rgba(24, 144, 255, 0.15); }
+  .ai-debug-card--success .ai-debug-card__badge { background: rgba(82, 196, 26, 0.15); }
+  .ai-debug-card--warning .ai-debug-card__badge { background: rgba(250, 140, 22, 0.15); }
+  .ai-debug-card__title { color: rgba(255,255,255,0.9); }
+  .ai-debug-card__dismiss { color: rgba(255,255,255,0.3); &:hover { color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.06); } }
+  .ai-debug-chip { background: rgba(24, 144, 255, 0.12); }
+  .ai-debug-chip--success { background: rgba(82, 196, 26, 0.12); }
+  .ai-debug-chip--warning { background: rgba(250, 140, 22, 0.12); }
+  .ai-debug-card__body, .ai-debug-card__item { color: rgba(255,255,255,0.65); }
+  .ai-debug-card__group-label { color: #73d13d; }
+  .ai-debug-card__group--remaining .ai-debug-card__group-label { color: #ffa940; }
 
   /deep/ .ant-empty-description {
     color: rgba(255, 255, 255, 0.45);

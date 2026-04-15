@@ -44,7 +44,7 @@
             :loading="loading"
             :pagination="pagination"
             :rowKey="record => record.id"
-            :scroll="{ x: 1280 }"
+            :scroll="{ x: 1420 }"
             @change="handleTableChange"
           >
             <!-- Status Column -->
@@ -65,6 +65,12 @@
             <template slot="last_login_at" slot-scope="text">
               <span v-if="text">{{ formatTime(text) }}</span>
               <span v-else class="text-muted">{{ $t('userManage.neverLogin') || 'Never' }}</span>
+            </template>
+
+            <!-- Register IP Column -->
+            <template slot="register_ip" slot-scope="text">
+              <span v-if="text">{{ text }}</span>
+              <span v-else class="text-muted">-</span>
             </template>
 
             <!-- Credits Column -->
@@ -977,6 +983,12 @@ export default {
           scopedSlots: { customRender: 'status' }
         },
         {
+          title: this.$t('userManage.registerIp') || '注册 IP',
+          dataIndex: 'register_ip',
+          width: 140,
+          scopedSlots: { customRender: 'register_ip' }
+        },
+        {
           title: this.$t('userManage.lastLogin') || 'Last Login',
           dataIndex: 'last_login_at',
           width: 150,
@@ -1586,6 +1598,7 @@ export default {
     formatTime (timestamp) {
       if (!timestamp) return ''
       const date = new Date(typeof timestamp === 'number' ? timestamp * 1000 : timestamp)
+      if (Number.isNaN(date.getTime())) return ''
       return date.toLocaleString()
     },
 

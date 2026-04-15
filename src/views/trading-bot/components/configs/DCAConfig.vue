@@ -18,7 +18,9 @@
     </a-form-model-item>
     <a-form-model-item :label="$t('trading-bot.dca.frequency')" prop="frequency">
       <a-select v-model="form.frequency" @change="emit">
+        <a-select-option value="every_bar">Every bar</a-select-option>
         <a-select-option value="hourly">{{ $t('trading-bot.dca.hourly') }}</a-select-option>
+        <a-select-option value="4h">4H</a-select-option>
         <a-select-option value="daily">{{ $t('trading-bot.dca.daily') }}</a-select-option>
         <a-select-option value="weekly">{{ $t('trading-bot.dca.weekly') }}</a-select-option>
         <a-select-option value="biweekly">{{ $t('trading-bot.dca.biweekly') }}</a-select-option>
@@ -73,7 +75,8 @@ export default {
   name: 'DCAConfig',
   props: {
     value: { type: Object, default: () => ({}) },
-    initialCapital: { type: Number, default: null }
+    initialCapital: { type: Number, default: null },
+    marketType: { type: String, default: 'swap' }
   },
   data () {
     return {

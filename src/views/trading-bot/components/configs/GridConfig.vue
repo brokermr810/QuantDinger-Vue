@@ -57,9 +57,9 @@
     </a-form-model-item>
     <a-form-model-item :label="$t('trading-bot.grid.direction')">
       <a-radio-group v-model="form.gridDirection" @change="emit">
-        <a-radio value="neutral">{{ $t('trading-bot.grid.neutral') }}</a-radio>
+        <a-radio value="neutral" :disabled="isSpotMarket">{{ $t('trading-bot.grid.neutral') }}</a-radio>
         <a-radio value="long">{{ $t('trading-bot.grid.long') }}</a-radio>
-        <a-radio value="short">{{ $t('trading-bot.grid.short') }}</a-radio>
+        <a-radio value="short" :disabled="isSpotMarket">{{ $t('trading-bot.grid.short') }}</a-radio>
       </a-radio-group>
       <div class="direction-hint">{{ directionHint }}</div>
     </a-form-model-item>
@@ -91,7 +91,8 @@ export default {
   name: 'GridConfig',
   props: {
     value: { type: Object, default: () => ({}) },
-    initialCapital: { type: Number, default: null }
+    initialCapital: { type: Number, default: null },
+    marketType: { type: String, default: 'swap' }
   },
   data () {
     return {
@@ -125,11 +126,27 @@ export default {
         this.form.amountPerGrid = Math.floor(this.initialCapital / val)
         this.emit()
       }
+    },
+    marketType: {
+      immediate: true,
+      handler (val) {
+        if (val === 'spot' && this.form.gridDirection !== 'long') {
+          this.form.gridDirection = 'long'
+          this.emit()
+        }
+      }
     }
   },
   computed: {
+    isSpotMarket () {
+      return this.marketType === 'spot'
+    },
     gridSpacing () {
       if (!this.form.upperPrice || !this.form.lowerPrice || !this.form.gridCount) return '-'
+      if (this.form.gridMode === 'geometric' && this.form.lowerPrice > 0) {
+        const ratio = Math.pow(this.form.upperPrice / this.form.lowerPrice, 1 / this.form.gridCount)
+        return `${((ratio - 1) * 100).toFixed(2)}%`
+      }
       const spacing = ((this.form.upperPrice - this.form.lowerPrice) / this.form.gridCount).toFixed(4)
       return `$${spacing}`
     },
@@ -138,6 +155,7 @@ export default {
       return (this.form.amountPerGrid * this.form.gridCount).toLocaleString('en-US', { minimumFractionDigits: 2 })
     },
     directionHint () {
+      if (this.isSpotMarket) return 'Spot grid only supports long mode.'
       const map = {
         neutral: this.$t('trading-bot.grid.neutralHint'),
         long: this.$t('trading-bot.grid.longHint'),

@@ -20,7 +20,7 @@ const TIMEFRAME_MINUTES = {
 }
 
 const FREQUENCY_MINUTES = {
-  hourly: 60, daily: 1440, weekly: 10080, biweekly: 20160, monthly: 43200
+  hourly: 60, '4h': 240, daily: 1440, weekly: 10080, biweekly: 20160, monthly: 43200
 }
 
 export const BOT_SCRIPT_TEMPLATES = {
@@ -33,6 +33,7 @@ GRIDS     = ${params.gridCount}
 AMT       = ${params.amountPerGrid}
 MODE      = "${params.gridMode || 'arithmetic'}"
 DIRECTION = "${params.gridDirection || 'neutral'}"
+REF_PRICE = ${params.referencePrice || 0}
 
 def _build_levels():
     if MODE == "geometric" and LOWER > 0:
@@ -43,62 +44,56 @@ def _build_levels():
 
 LEVELS = _build_levels()
 
-def _nearest_idx(price):
-    best, dist = 0, abs(price - LEVELS[0])
-    for i, lv in enumerate(LEVELS):
-        d = abs(price - lv)
-        if d < dist:
-            best, dist = i, d
-    return best
-
 def on_init(ctx):
-    ctx.param("prev_idx", -1)
-    ctx.param("filled_buy", [])
+    anchor = REF_PRICE if REF_PRICE > 0 else (LOWER + UPPER) / 2.0
+    bp = []
+    sp = []
+    for i, lv in enumerate(LEVELS):
+        if lv < anchor and DIRECTION in ("neutral", "long"):
+            bp.append(i)
+        elif lv > anchor and DIRECTION in ("neutral", "short"):
+            sp.append(i)
+    ctx.param("bp", bp)
+    ctx.param("sp", sp)
+    ctx.param("prev_price", anchor)
+    ctx.param("anchor_price", anchor)
+    ctx.log("Grid anchor @ %.2f | buy_pending=%d sell_pending=%d [%.2f ~ %.2f]" % (anchor, len(bp), len(sp), LOWER, UPPER))
 
 def on_bar(ctx, bar):
     price = bar.close
     if price < LOWER or price > UPPER:
         return
 
-    idx = _nearest_idx(price)
-    prev = ctx.param("prev_idx", -1)
-    filled = list(ctx.param("filled_buy", []))
+    prev_price = ctx.param("prev_price", -1.0)
+    anchor = ctx.param("anchor_price", REF_PRICE if REF_PRICE > 0 else (LOWER + UPPER) / 2.0)
 
-    if prev < 0:
-        ctx._params["prev_idx"] = idx
+    if prev_price < 0:
+        prev_price = anchor
+        ctx._params["prev_price"] = anchor
+
+    if abs(price - prev_price) < 1e-8:
         return
 
-    if idx == prev:
-        return
+    bp = set(ctx.param("bp", []))
+    sp = set(ctx.param("sp", []))
 
-    if idx < prev:
-        for lvl_i in range(prev - 1, idx - 1, -1):
-            if lvl_i not in filled:
-                ctx.buy(price=LEVELS[lvl_i], amount=AMT)
-                filled.append(lvl_i)
-                ctx.log("BUY grid %d @ %.6f" % (lvl_i, LEVELS[lvl_i]))
-    elif idx > prev:
-        new_filled = []
-        for lvl_i in filled:
-            if lvl_i < idx:
-                ctx.sell(price=LEVELS[lvl_i + 1], amount=AMT)
-                ctx.log("SELL grid %d @ %.6f" % (lvl_i, LEVELS[lvl_i + 1]))
-            else:
-                new_filled.append(lvl_i)
-        filled = new_filled
+    for i, lv in enumerate(LEVELS):
+        if prev_price > lv >= price and i in bp:
+            ctx.buy(price=lv, amount=AMT)
+            bp.discard(i)
+            if i + 1 < len(LEVELS):
+                sp.add(i + 1)
+            ctx.log("BUY grid %d @ %.4f (price %.4f)" % (i, lv, price))
+        elif prev_price < lv <= price and i in sp:
+            ctx.sell(price=lv, amount=AMT)
+            sp.discard(i)
+            if i - 1 >= 0:
+                bp.add(i - 1)
+            ctx.log("SELL grid %d @ %.4f (price %.4f)" % (i, lv, price))
 
-        if DIRECTION == "short" and len(filled) == 0:
-            ctx.sell(price=LEVELS[idx], amount=AMT)
-            filled.append(idx)
-            ctx.log("SHORT grid %d @ %.6f" % (idx, LEVELS[idx]))
-
-    if DIRECTION == "long" and len(filled) == 0 and idx < len(LEVELS) - 1:
-        ctx.buy(price=LEVELS[idx], amount=AMT)
-        filled.append(idx)
-        ctx.log("LONG grid %d @ %.6f" % (idx, LEVELS[idx]))
-
-    ctx._params["prev_idx"] = idx
-    ctx._params["filled_buy"] = filled
+    ctx._params["bp"] = list(bp)
+    ctx._params["sp"] = list(sp)
+    ctx._params["prev_price"] = price
 `,
 
   // ========== 马丁格尔 ==========
@@ -108,58 +103,75 @@ MULTIPLIER  = ${params.multiplier}
 MAX_LAYERS  = ${params.maxLayers}
 DROP_PCT    = ${params.priceDropPct} / 100.0
 TP_PCT      = ${params.takeProfitPct} / 100.0
+DIRECTION   = "${params.direction || 'long'}"
 
 def on_init(ctx):
     ctx.param("layer", 0)
-    ctx.param("last_buy_price", 0.0)
+    ctx.param("last_entry_price", 0.0)
     ctx.param("total_cost", 0.0)
     ctx.param("total_qty", 0.0)
 
+def _reset_state(ctx):
+    ctx._params["layer"] = 0
+    ctx._params["total_cost"] = 0.0
+    ctx._params["total_qty"] = 0.0
+    ctx._params["last_entry_price"] = 0.0
+
 def on_bar(ctx, bar):
     price = bar.close
-    layer     = ctx.param("layer", 0)
-    last_buy  = ctx.param("last_buy_price", 0.0)
-    cost      = ctx.param("total_cost", 0.0)
-    qty       = ctx.param("total_qty", 0.0)
-    has_pos   = ctx.position and float(ctx.position.get("size", 0)) > 0
+    layer      = ctx.param("layer", 0)
+    last_entry = ctx.param("last_entry_price", 0.0)
+    cost       = ctx.param("total_cost", 0.0)
+    qty        = ctx.param("total_qty", 0.0)
+    has_pos    = ctx.position and float(ctx.position.get("size", 0)) > 0
 
     if not has_pos and layer == 0:
-        ctx.buy(price=price, amount=INIT_AMT)
-        buy_qty = INIT_AMT / price if price > 0 else 0
+        entry_qty = INIT_AMT / price if price > 0 else 0
+        if DIRECTION == "long":
+            ctx.buy(price=price, amount=INIT_AMT)
+            ctx.log("Layer 1: BUY %.2f USDT @ %.4f" % (INIT_AMT, price))
+        else:
+            ctx.sell(price=price, amount=INIT_AMT)
+            ctx.log("Layer 1: SELL %.2f USDT @ %.4f" % (INIT_AMT, price))
         ctx._params["layer"] = 1
-        ctx._params["last_buy_price"] = price
+        ctx._params["last_entry_price"] = price
         ctx._params["total_cost"] = INIT_AMT
-        ctx._params["total_qty"] = buy_qty
-        ctx.log("Layer 1: BUY %.2f USDT @ %.6f" % (INIT_AMT, price))
+        ctx._params["total_qty"] = entry_qty
         return
 
     if not has_pos:
-        ctx._params["layer"] = 0
-        ctx._params["total_cost"] = 0.0
-        ctx._params["total_qty"] = 0.0
-        ctx._params["last_buy_price"] = 0.0
+        _reset_state(ctx)
         return
 
-    avg_price = cost / qty if qty > 0 else last_buy
-    if avg_price > 0 and price >= avg_price * (1 + TP_PCT):
-        pnl = (price - avg_price) * qty
-        ctx.log("TAKE PROFIT @ %.6f, avg=%.6f, PnL=%.2f USDT" % (price, avg_price, pnl))
+    avg_price = cost / qty if qty > 0 else last_entry
+
+    if DIRECTION == "long":
+        tp_hit = avg_price > 0 and price >= avg_price * (1 + TP_PCT)
+        add_hit = layer < MAX_LAYERS and last_entry > 0 and price <= last_entry * (1 - DROP_PCT)
+    else:
+        tp_hit = avg_price > 0 and price <= avg_price * (1 - TP_PCT)
+        add_hit = layer < MAX_LAYERS and last_entry > 0 and price >= last_entry * (1 + DROP_PCT)
+
+    if tp_hit:
+        pnl = (price - avg_price) * qty if DIRECTION == "long" else (avg_price - price) * qty
+        ctx.log("TAKE PROFIT @ %.4f, avg=%.4f, PnL=%.2f USDT" % (price, avg_price, pnl))
         ctx.close_position()
-        ctx._params["layer"] = 0
-        ctx._params["total_cost"] = 0.0
-        ctx._params["total_qty"] = 0.0
-        ctx._params["last_buy_price"] = 0.0
+        _reset_state(ctx)
         return
 
-    if layer < MAX_LAYERS and last_buy > 0 and price <= last_buy * (1 - DROP_PCT):
+    if add_hit:
         amt = INIT_AMT * (MULTIPLIER ** layer)
-        buy_qty = amt / price if price > 0 else 0
-        ctx.buy(price=price, amount=amt)
+        add_qty = amt / price if price > 0 else 0
+        if DIRECTION == "long":
+            ctx.buy(price=price, amount=amt)
+            ctx.log("Layer %d: BUY %.2f USDT @ %.4f" % (layer + 1, amt, price))
+        else:
+            ctx.sell(price=price, amount=amt)
+            ctx.log("Layer %d: SELL %.2f USDT @ %.4f" % (layer + 1, amt, price))
         ctx._params["layer"] = layer + 1
-        ctx._params["last_buy_price"] = price
+        ctx._params["last_entry_price"] = price
         ctx._params["total_cost"] = cost + amt
-        ctx._params["total_qty"] = qty + buy_qty
-        ctx.log("Layer %d: BUY %.2f USDT @ %.6f" % (layer + 1, amt, price))
+        ctx._params["total_qty"] = qty + add_qty
 `,
 
   // ========== 趋势跟踪 ==========
@@ -259,7 +271,7 @@ def on_bar(ctx, bar):
   dca: (params, context) => {
     const tf = (context && context.timeframe) || '1h'
     const tfMin = TIMEFRAME_MINUTES[tf] || 60
-    const freqMin = FREQUENCY_MINUTES[params.frequency] || 1440
+    const freqMin = params.frequency === 'every_bar' ? tfMin : (FREQUENCY_MINUTES[params.frequency] || 1440)
     const intervalBars = Math.max(1, Math.round(freqMin / tfMin))
 
     return `# ---- DCA (Dollar Cost Averaging) Bot ----

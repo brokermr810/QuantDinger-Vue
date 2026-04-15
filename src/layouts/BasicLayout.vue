@@ -12,9 +12,9 @@
     >
 
       <template #menuHeaderRender>
-        <div>
-          <img src="~@/assets/slogo.png" />
-          <h1>{{ title }}</h1>
+        <div class="sidebar-logo-wrapper" :class="{ 'sidebar-logo-wrapper--collapsed': collapsed }">
+          <img v-if="collapsed" :src="slogoImg" class="sidebar-logo sidebar-logo--collapsed" alt="QuantDinger" />
+          <img v-else :src="currentLogo" class="sidebar-logo" alt="QuantDinger" />
         </div>
       </template>
       <!-- 1.0.0+ 版本 pro-layout 提供 API,
@@ -149,6 +149,9 @@ import defaultSettings from '@/config/defaultSettings'
 import RightContent from '@/components/GlobalHeader/RightContent'
 import SettingDrawer from '@/components/SettingDrawer/SettingDrawer'
 import { Icon } from '@iconify/vue2'
+import logoLight from '@/assets/logo.png'
+import logoDark from '@/assets/logo_w.png'
+import slogoImg from '@/assets/slogo.png'
 
 export default {
   name: 'BasicLayout',
@@ -161,6 +164,7 @@ export default {
   },
   data () {
     return {
+      slogoImg,
       // preview.pro.antdv.com only use.
       isProPreviewSite: process.env.VUE_APP_PREVIEW === 'true' && process.env.NODE_ENV !== 'development',
       // end
@@ -237,6 +241,10 @@ export default {
     },
     appVersion () {
       return defaultSettings.appVersion || '3.0.1'
+    },
+    currentLogo () {
+      const theme = this.settings.theme
+      return (theme === 'dark' || theme === 'realdark') ? logoDark : logoLight
     }
   },
   created () {
@@ -605,6 +613,75 @@ export default {
 
 <style lang="less">
 @import "./BasicLayout.less";
+
+/* 侧栏顶部 Logo 区域 */
+.sidebar-logo-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  height: 100%;
+  padding: 0 16px;
+  box-sizing: border-box;
+
+  .sidebar-logo {
+    display: block;
+    max-width: 100%;
+    max-height: 40px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+  }
+
+  .sidebar-logo--collapsed {
+    max-height: 32px;
+    max-width: 100%;
+  }
+
+  &--collapsed {
+    justify-content: center;
+    padding: 0 8px;
+  }
+}
+
+/deep/ .ant-pro-sider-menu-logo {
+  display: flex;
+  align-items: center;
+  padding-left: 0 !important;
+  padding-right: 0;
+
+  > div {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+  }
+
+  img {
+    width: auto !important;
+    height: auto !important;
+    max-height: 40px;
+    max-width: 85%;
+  }
+
+  h1 {
+    display: none !important;
+  }
+}
+
+/* 侧栏折叠时 slogo 自适应 */
+.ant-pro-sider-menu-sider.ant-layout-sider-collapsed /deep/ .ant-pro-sider-menu-logo {
+  padding: 0 !important;
+  justify-content: center;
+
+  img {
+    max-width: 80% !important;
+    max-height: 32px !important;
+    width: auto !important;
+    height: auto !important;
+  }
+}
+
 .ant-pro-sider-menu-sider.light .ant-menu-light {
   height: 60vh!important;
 }

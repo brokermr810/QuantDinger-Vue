@@ -63,6 +63,13 @@
         @change="emit"
       />
     </a-form-model-item>
+    <a-form-model-item :label="$t('trading-bot.martingale.direction')">
+      <a-radio-group v-model="form.direction" @change="emit">
+        <a-radio value="long">{{ $t('trading-bot.martingale.long') }}</a-radio>
+        <a-radio value="short" :disabled="isSpotMarket">{{ $t('trading-bot.martingale.short') }}</a-radio>
+      </a-radio-group>
+      <div class="direction-hint">{{ directionHint }}</div>
+    </a-form-model-item>
     <div
       class="config-summary"
       v-if="form.initialAmount && form.multiplier && form.maxLayers"
@@ -84,7 +91,8 @@ export default {
   name: 'MartingaleConfig',
   props: {
     value: { type: Object, default: () => ({}) },
-    initialCapital: { type: Number, default: null }
+    initialCapital: { type: Number, default: null },
+    marketType: { type: String, default: 'swap' }
   },
   data () {
     return {
@@ -93,7 +101,8 @@ export default {
         multiplier: this.value.multiplier || 2,
         maxLayers: this.value.maxLayers || 5,
         priceDropPct: this.value.priceDropPct || 3,
-        takeProfitPct: this.value.takeProfitPct || 5
+        takeProfitPct: this.value.takeProfitPct || 5,
+        direction: this.value.direction || 'long'
       },
       capitalLinked: !this.value.initialAmount,
       rules: {
@@ -116,9 +125,21 @@ export default {
     },
     'form.maxLayers' () {
       if (this.initialCapital && this.capitalLinked) this.recalcInitialAmount(this.initialCapital)
+    },
+    marketType: {
+      immediate: true,
+      handler (val) {
+        if (val === 'spot' && this.form.direction !== 'long') {
+          this.form.direction = 'long'
+          this.emit()
+        }
+      }
     }
   },
   computed: {
+    isSpotMarket () {
+      return this.marketType === 'spot'
+    },
     maxInvestment () {
       let total = 0
       let amt = this.form.initialAmount
@@ -131,6 +152,12 @@ export default {
     lastLayerAmount () {
       const amt = this.form.initialAmount * Math.pow(this.form.multiplier, this.form.maxLayers - 1)
       return amt.toLocaleString('en-US', { minimumFractionDigits: 2 })
+    },
+    directionHint () {
+      if (this.isSpotMarket) return 'Spot only supports long martingale bots.'
+      return this.form.direction === 'long'
+        ? this.$t('trading-bot.martingale.longHint')
+        : this.$t('trading-bot.martingale.shortHint')
     }
   },
   methods: {
@@ -162,7 +189,8 @@ export default {
 </script>
 
 <style lang="less" scoped>
-.capital-hint {
+.capital-hint,
+.direction-hint {
   margin-top: 6px;
   font-size: 12px;
   color: #8c8c8c;

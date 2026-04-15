@@ -158,6 +158,29 @@ export function testNotificationSettings () {
   })
 }
 
+export function getChartTemplates () {
+  return request({
+    url: '/api/users/chart-templates',
+    method: 'get'
+  })
+}
+
+export function saveChartTemplate (data) {
+  return request({
+    url: '/api/users/chart-templates',
+    method: 'post',
+    data
+  })
+}
+
+export function deleteChartTemplate (templateId) {
+  return request({
+    url: '/api/users/chart-templates',
+    method: 'delete',
+    params: { template_id: templateId }
+  })
+}
+
 /**
  * Get current user's credits log
  * @param {Object} params - { page, page_size }
