@@ -6,18 +6,23 @@
     :label-col="{ span: 8 }"
     :wrapper-col="{ span: 14 }"
   >
-    <a-form-model-item :label="$t('trading-bot.martingale.initialAmount')" prop="initialAmount">
+    <a-form-model-item :label="budgetLabel">
       <a-input-number
-        v-model="form.initialAmount"
-        :min="1"
-        :step="10"
+        :value="initialCapital"
+        disabled
         style="width: 100%"
-        :placeholder="$t('trading-bot.martingale.initialAmountPh')"
-        @change="handleAmountManualChange"
+        placeholder="USDT"
       />
-      <div v-if="capitalLinked && initialCapital" class="capital-hint">
-        <a-icon type="link" /> {{ $t('trading-bot.grid.autoCalcHint') }}
-      </div>
+      <div class="capital-hint">{{ budgetHint }}</div>
+    </a-form-model-item>
+    <a-form-model-item :label="firstOrderLabel">
+      <a-input-number
+        :value="firstOrderAmount"
+        disabled
+        style="width: 100%"
+        placeholder="USDT"
+      />
+      <div class="capital-hint">{{ firstOrderHint }}</div>
     </a-form-model-item>
     <a-form-model-item :label="$t('trading-bot.martingale.multiplier')" prop="multiplier">
       <a-input-number
@@ -52,7 +57,7 @@
         @change="emit"
       />
     </a-form-model-item>
-    <a-form-model-item :label="$t('trading-bot.martingale.takeProfitPct')" prop="takeProfitPct">
+    <a-form-model-item :label="takeProfitLabel" prop="takeProfitPct">
       <a-input-number
         v-model="form.takeProfitPct"
         :min="0.1"
@@ -65,6 +70,19 @@
       />
       <div class="field-hint">{{ takeProfitHint }}</div>
     </a-form-model-item>
+    <a-form-model-item :label="stopLossLabel" prop="stopLossPct">
+      <a-input-number
+        v-model="form.stopLossPct"
+        :min="0.1"
+        :max="100"
+        :step="0.5"
+        style="width: 100%"
+        :formatter="v => `${v}%`"
+        :parser="v => v.replace('%', '')"
+        @change="emit"
+      />
+      <div class="field-hint">{{ stopLossHint }}</div>
+    </a-form-model-item>
     <a-form-model-item :label="$t('trading-bot.martingale.direction')">
       <a-radio-group v-model="form.direction" @change="emit">
         <a-radio value="long">{{ $t('trading-bot.martingale.long') }}</a-radio>
@@ -74,11 +92,15 @@
     </a-form-model-item>
     <div
       class="config-summary"
-      v-if="form.initialAmount && form.multiplier && form.maxLayers"
+      v-if="firstOrderRaw > 0 && form.multiplier && form.maxLayers"
     >
       <div class="summary-item">
-        <span class="label">{{ $t('trading-bot.martingale.maxInvest') }}</span>
+        <span class="label">{{ budgetLabel }}</span>
         <span class="value">${{ maxInvestment }}</span>
+      </div>
+      <div class="summary-item">
+        <span class="label">{{ firstOrderLabel }}</span>
+        <span class="value">${{ firstOrderAmount }}</span>
       </div>
       <div class="summary-item">
         <span class="label">{{ $t('trading-bot.martingale.lastLayerAmt') }}</span>
@@ -99,34 +121,34 @@ export default {
   data () {
     return {
       form: {
-        initialAmount: this.value.initialAmount || null,
         multiplier: this.value.multiplier || 2,
         maxLayers: this.value.maxLayers || 5,
         priceDropPct: this.value.priceDropPct || 3,
         takeProfitPct: this.value.takeProfitPct || 2,
+        stopLossPct: this.value.stopLossPct || 12,
         direction: this.value.direction || 'long'
       },
-      capitalLinked: !this.value.initialAmount,
       rules: {
-        initialAmount: [{ required: true, message: this.$t('trading-bot.martingale.initialAmountReq'), trigger: 'change' }],
         multiplier: [{ required: true, message: this.$t('trading-bot.martingale.multiplierReq'), trigger: 'change' }],
         maxLayers: [{ required: true, message: this.$t('trading-bot.martingale.maxLayersReq'), trigger: 'change' }],
         priceDropPct: [{ required: true, message: this.$t('trading-bot.martingale.priceDropReq'), trigger: 'change' }],
-        takeProfitPct: [{ required: true, message: this.$t('trading-bot.martingale.takeProfitReq'), trigger: 'change' }]
+        takeProfitPct: [{ required: true, message: this.$t('trading-bot.martingale.takeProfitReq'), trigger: 'change' }],
+        stopLossPct: [{ required: true, message: this.isZhLocale ? '请输入止损比例' : 'Please enter stop loss %', trigger: 'change' }]
       }
     }
   },
+  mounted () {
+    this.emit()
+  },
   watch: {
-    initialCapital (val) {
-      if (val && val > 0 && this.capitalLinked) {
-        this.recalcInitialAmount(val)
-      }
-    },
     'form.multiplier' () {
-      if (this.initialCapital && this.capitalLinked) this.recalcInitialAmount(this.initialCapital)
+      this.emit()
     },
     'form.maxLayers' () {
-      if (this.initialCapital && this.capitalLinked) this.recalcInitialAmount(this.initialCapital)
+      this.emit()
+    },
+    initialCapital () {
+      this.emit()
     },
     marketType: {
       immediate: true,
@@ -145,14 +167,44 @@ export default {
     isSpotMarket () {
       return this.marketType === 'spot'
     },
+    budgetLabel () {
+      return this.isZhLocale ? '总投入金额' : 'Total Budget'
+    },
+    firstOrderLabel () {
+      return this.isZhLocale ? '首单金额（自动计算）' : 'First Order Amount (Auto)'
+    },
+    takeProfitLabel () {
+      return this.isZhLocale ? '相对持仓均价止盈%' : 'Take Profit vs Avg Entry %'
+    },
+    stopLossLabel () {
+      return this.isZhLocale ? '相对持仓均价止损%' : 'Stop Loss vs Avg Entry %'
+    },
+    budgetHint () {
+      return this.isZhLocale
+        ? '这里表示这一轮马丁允许投入的总预算，不是首单金额。'
+        : 'This is the total budget for one martingale cycle, not the first order size.'
+    },
+    firstOrderRaw () {
+      const capital = Number(this.initialCapital || 0)
+      if (capital <= 0) return 0
+      let geoSum = 0
+      for (let i = 0; i < this.form.maxLayers; i++) {
+        geoSum += Math.pow(this.form.multiplier, i)
+      }
+      if (geoSum <= 0) return 0
+      return Math.max(0, Math.floor((capital / geoSum) * 100) / 100)
+    },
+    firstOrderAmount () {
+      return this.firstOrderRaw.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    },
     maxLayersHint () {
       return this.isZhLocale
-        ? '控制最多允许补仓的层数，不是仓位金额上限。'
-        : 'Controls how many add-on entries are allowed, not the max position size.'
+        ? '控制最多允许补仓的层数；系统会按总投入金额自动反推首单金额。'
+        : 'Controls how many add-on entries are allowed; first order size is derived from total budget.'
     },
     maxInvestment () {
       let total = 0
-      let amt = this.form.initialAmount
+      let amt = this.firstOrderRaw
       for (let i = 0; i < this.form.maxLayers; i++) {
         total += amt
         amt *= this.form.multiplier
@@ -160,13 +212,23 @@ export default {
       return total.toLocaleString('en-US', { minimumFractionDigits: 2 })
     },
     lastLayerAmount () {
-      const amt = this.form.initialAmount * Math.pow(this.form.multiplier, this.form.maxLayers - 1)
+      const amt = this.firstOrderRaw * Math.pow(this.form.multiplier, this.form.maxLayers - 1)
       return amt.toLocaleString('en-US', { minimumFractionDigits: 2 })
+    },
+    firstOrderHint () {
+      return this.isZhLocale
+        ? '根据总投入金额、加仓倍数和最大层数自动推导，避免重复设置。'
+        : 'Derived automatically from total budget, multiplier, and max layers.'
     },
     takeProfitHint () {
       return this.isZhLocale
-        ? '当持仓均价盈利达到此比例时，脚本自动平仓并重置马丁状态。'
+        ? '当价格相对持仓均价达到这个盈利比例时，脚本自动平仓并重置马丁状态。'
         : 'When average entry profit reaches this %, the script closes the position and resets martingale state.'
+    },
+    stopLossHint () {
+      return this.isZhLocale
+        ? '当价格相对持仓均价反向达到这个比例时，整轮马丁强制止损。'
+        : 'Force close the whole martingale cycle when price moves this % against average entry.'
     },
     directionHint () {
       if (this.isSpotMarket) return 'Spot only supports long martingale bots.'
@@ -176,26 +238,18 @@ export default {
     }
   },
   methods: {
-    recalcInitialAmount (capital) {
-      let geoSum = 0
-      for (let i = 0; i < this.form.maxLayers; i++) {
-        geoSum += Math.pow(this.form.multiplier, i)
-      }
-      this.form.initialAmount = Math.max(1, Math.floor(capital / geoSum))
-      this.emit()
-    },
-    handleAmountManualChange () {
-      this.capitalLinked = false
-      this.emit()
-    },
     emit () {
-      this.$emit('input', { ...this.form })
-      this.$emit('change', { ...this.form })
+      const payload = {
+        ...this.form,
+        initialAmount: this.firstOrderRaw
+      }
+      this.$emit('input', payload)
+      this.$emit('change', payload)
     },
     validate () {
       return new Promise((resolve, reject) => {
         this.$refs.form.validate(valid => {
-          valid ? resolve(this.form) : reject(new Error('validation failed'))
+          valid ? resolve({ ...this.form, initialAmount: this.firstOrderRaw }) : reject(new Error('validation failed'))
         })
       })
     }

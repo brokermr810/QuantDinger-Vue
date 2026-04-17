@@ -89,7 +89,10 @@ export default {
       },
       capitalLinked: !this.value.totalBudget,
       rules: {
-        amountEach: [{ required: true, message: this.$t('trading-bot.dca.amountEachReq'), trigger: 'change' }],
+        amountEach: [
+          { required: true, message: this.$t('trading-bot.dca.amountEachReq'), trigger: 'change' },
+          { validator: this.validateAmountEach, trigger: 'change' }
+        ],
         frequency: [{ required: true, message: this.$t('trading-bot.dca.frequencyReq'), trigger: 'change' }]
       }
     }
@@ -112,6 +115,13 @@ export default {
     }
   },
   methods: {
+    validateAmountEach (rule, value, callback) {
+      if (value == null || value === '') return callback()
+      if (this.form.totalBudget && this.form.totalBudget > 0 && value > this.form.totalBudget + 1e-6) {
+        return callback(new Error(this.$t('trading-bot.dca.amountExceedsBudget')))
+      }
+      callback()
+    },
     emit () {
       this.$emit('input', { ...this.form })
       this.$emit('change', { ...this.form })

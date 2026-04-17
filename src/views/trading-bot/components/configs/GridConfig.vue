@@ -107,10 +107,19 @@ export default {
       },
       capitalLinked: !this.value.amountPerGrid,
       rules: {
-        upperPrice: [{ required: true, message: this.$t('trading-bot.grid.upperPriceReq'), trigger: 'change' }],
-        lowerPrice: [{ required: true, message: this.$t('trading-bot.grid.lowerPriceReq'), trigger: 'change' }],
+        upperPrice: [
+          { required: true, message: this.$t('trading-bot.grid.upperPriceReq'), trigger: 'change' },
+          { validator: this.validateUpperPrice, trigger: 'change' }
+        ],
+        lowerPrice: [
+          { required: true, message: this.$t('trading-bot.grid.lowerPriceReq'), trigger: 'change' },
+          { validator: this.validateLowerPrice, trigger: 'change' }
+        ],
         gridCount: [{ required: true, message: this.$t('trading-bot.grid.gridCountReq'), trigger: 'change' }],
-        amountPerGrid: [{ required: true, message: this.$t('trading-bot.grid.amountReq'), trigger: 'change' }]
+        amountPerGrid: [
+          { required: true, message: this.$t('trading-bot.grid.amountReq'), trigger: 'change' },
+          { validator: this.validateAmountPerGrid, trigger: 'change' }
+        ]
       }
     }
   },
@@ -173,6 +182,33 @@ export default {
     handleAmountManualChange () {
       this.capitalLinked = false
       this.emit()
+    },
+    validateUpperPrice (rule, value, callback) {
+      if (value == null || value === '') return callback()
+      if (this.form.lowerPrice != null && value <= this.form.lowerPrice) {
+        return callback(new Error(this.$t('trading-bot.grid.upperMustGtLower')))
+      }
+      callback()
+    },
+    validateLowerPrice (rule, value, callback) {
+      if (value == null || value === '') return callback()
+      if (this.form.gridMode === 'geometric' && value <= 0) {
+        return callback(new Error(this.$t('trading-bot.grid.lowerMustGtZero')))
+      }
+      if (this.form.upperPrice != null && value >= this.form.upperPrice) {
+        return callback(new Error(this.$t('trading-bot.grid.upperMustGtLower')))
+      }
+      callback()
+    },
+    validateAmountPerGrid (rule, value, callback) {
+      if (value == null || value === '') return callback()
+      if (this.initialCapital && this.form.gridCount) {
+        const total = value * this.form.gridCount
+        if (total > this.initialCapital + 1e-6) {
+          return callback(new Error(this.$t('trading-bot.grid.amountExceedsBudget')))
+        }
+      }
+      callback()
     },
     emit () {
       this.$emit('input', { ...this.form })

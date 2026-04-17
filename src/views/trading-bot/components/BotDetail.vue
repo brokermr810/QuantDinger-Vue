@@ -92,7 +92,7 @@
                   <span class="param-value highlight">{{ tc.leverage || 1 }}x</span>
                 </div>
                 <div class="param-item">
-                  <span class="param-label">{{ $t('trading-bot.wizard.initialCapital') }}</span>
+                  <span class="param-label">{{ capitalLabel }}</span>
                   <span class="param-value highlight">{{ formatNum(tc.initial_capital) }} USDT</span>
                 </div>
                 <div class="param-item" v-if="tc.order_mode">
@@ -106,40 +106,28 @@
               </div>
             </div>
 
-            <div class="params-section" v-if="botParams && Object.keys(botParams).length">
+            <div class="params-section" v-if="displayStrategyItems.length">
               <div class="params-section__title">
                 <a-icon type="sliders" />
                 <span>{{ $t('trading-bot.wizard.strategyParams') }}</span>
               </div>
               <div class="params-grid">
-                <div class="param-item" v-for="(val, key) in displayBotParams" :key="key">
-                  <span class="param-label">{{ paramLabel(key) }}</span>
-                  <span class="param-value" :class="{ highlight: isNumeric(val) }">{{ formatParamValue(key, val) }}</span>
+                <div class="param-item" v-for="item in displayStrategyItems" :key="item.key">
+                  <span class="param-label">{{ item.label }}</span>
+                  <span class="param-value" :class="{ highlight: isNumeric(item.value) }">{{ item.value }}</span>
                 </div>
               </div>
             </div>
 
-            <div class="params-section" v-if="hasRiskParams">
+            <div class="params-section" v-if="displayRiskItems.length">
               <div class="params-section__title">
                 <a-icon type="safety-certificate" />
                 <span>{{ $t('trading-bot.wizard.riskParams') }}</span>
               </div>
               <div class="params-grid">
-                <div class="param-item" v-if="tc.stop_loss_pct">
-                  <span class="param-label">{{ $t('trading-bot.risk.stopLossPct') }}</span>
-                  <span class="param-value highlight danger">{{ tc.stop_loss_pct }}%</span>
-                </div>
-                <div class="param-item" v-if="tc.take_profit_pct">
-                  <span class="param-label">{{ $t('trading-bot.risk.takeProfitPct') }}</span>
-                  <span class="param-value highlight success">{{ tc.take_profit_pct }}%</span>
-                </div>
-                <div class="param-item" v-if="tc.max_position">
-                  <span class="param-label">{{ $t('trading-bot.risk.maxPosition') }}</span>
-                  <span class="param-value">{{ formatNum(tc.max_position) }} USDT</span>
-                </div>
-                <div class="param-item" v-if="tc.max_daily_loss">
-                  <span class="param-label">{{ $t('trading-bot.risk.maxDailyLoss') }}</span>
-                  <span class="param-value highlight danger">{{ formatNum(tc.max_daily_loss) }} USDT</span>
+                <div class="param-item" v-for="item in displayRiskItems" :key="item.key">
+                  <span class="param-label">{{ item.label }}</span>
+                  <span class="param-value highlight" :class="riskValueClass(item.key)">{{ item.value }}</span>
                 </div>
               </div>
             </div>
@@ -343,6 +331,8 @@ const PARAM_LABEL_MAP = {
   multiplier: 'trading-bot.martingale.multiplier',
   maxLayers: 'trading-bot.martingale.maxLayers',
   priceDropPct: 'trading-bot.martingale.priceDropPct',
+  takeProfitPct: 'trading-bot.martingale.takeProfitPct',
+  stopLossPct: 'trading-bot.risk.stopLossPct',
   direction: 'trading-bot.martingale.direction',
   maPeriod: 'trading-bot.trend.maPeriod',
   maType: 'trading-bot.trend.maType',
@@ -379,17 +369,51 @@ export default {
   computed: {
     tc () { return this.bot?.trading_config || {} },
     botParams () { return this.tc.bot_params || {} },
+    botDisplay () { return this.bot?.bot_display || {} },
+    isMartingaleBot () { return (this.bot?.bot_type || this.tc.bot_type) === 'martingale' },
+    displayStrategyItems () {
+      const items = Array.isArray(this.botDisplay?.strategy_params) ? this.botDisplay.strategy_params : null
+      if (items && items.length) {
+        return items.map(item => ({
+          key: item.key,
+          label: item.label_key ? this.$t(item.label_key) : this.paramLabel(item.key),
+          value: this.formatDisplayItem(item)
+        }))
+      }
+      return Object.entries(this.displayBotParams).map(([key, val]) => ({
+        key,
+        label: this.paramLabel(key),
+        value: this.formatParamValue(key, val)
+      }))
+    },
     displayBotParams () {
-      const skip = new Set(['orderMode', 'timeframe', 'takeProfitPct'])
+      const skip = new Set(['orderMode', 'timeframe'])
       const out = {}
       for (const [k, v] of Object.entries(this.botParams)) {
         if (!skip.has(k) && v !== null && v !== undefined && v !== '') out[k] = v
       }
       return out
     },
-    hasRiskParams () {
-      const tc = this.tc
-      return tc.stop_loss_pct || tc.take_profit_pct || tc.max_position || tc.max_daily_loss
+    capitalLabel () {
+      return this.botDisplay?.capital_label_key
+        ? this.$t(this.botDisplay.capital_label_key)
+        : this.$t('trading-bot.wizard.initialCapital')
+    },
+    displayRiskItems () {
+      const items = Array.isArray(this.botDisplay?.risk_params) ? this.botDisplay.risk_params : null
+      if (items && items.length) {
+        return items.map(item => ({
+          key: item.key,
+          label: item.label_key ? this.$t(item.label_key) : this.paramLabel(item.key),
+          value: this.formatDisplayItem(item)
+        }))
+      }
+      const fallback = []
+      if (!this.isMartingaleBot && this.tc.stop_loss_pct) fallback.push({ key: 'stopLossPct', label: this.$t('trading-bot.risk.stopLossPct'), value: `${this.tc.stop_loss_pct}%` })
+      if (!this.isMartingaleBot && this.tc.take_profit_pct) fallback.push({ key: 'takeProfitPct', label: this.$t('trading-bot.risk.takeProfitPct'), value: `${this.tc.take_profit_pct}%` })
+      if (!this.isMartingaleBot && this.tc.max_position) fallback.push({ key: 'maxPosition', label: this.$t('trading-bot.risk.maxPosition'), value: `${this.formatNum(this.tc.max_position)} USDT` })
+      if (this.tc.max_daily_loss) fallback.push({ key: 'maxDailyLoss', label: this.isMartingaleBot ? this.$t('trading-bot.martingale.maxDailyLossAdvanced') : this.$t('trading-bot.risk.maxDailyLoss'), value: `${this.formatNum(this.tc.max_daily_loss)} USDT` })
+      return fallback
     },
     isGridBot () { return (this.bot?.bot_type || this.tc.bot_type) === 'grid' },
     gp () {
@@ -506,6 +530,21 @@ export default {
     }
   },
   methods: {
+    formatDisplayItem (item) {
+      const valueType = item?.value_type || 'text'
+      const value = item?.value
+      if (valueType === 'enum' && item?.value_key) return this.$t(item.value_key)
+      if (valueType === 'bool') return value ? this.$t('trading-bot.common.enabled') : this.$t('trading-bot.common.disabled')
+      if (valueType === 'percent') return `${this.formatNum(value)}%`
+      if (valueType === 'usdt') return `${this.formatNum(value)} USDT`
+      if (valueType === 'number' && typeof value === 'number') return this.formatNum(value)
+      return String(value)
+    },
+    riskValueClass (key) {
+      if (key === 'takeProfitPct') return 'success'
+      if (key === 'stopLossPct' || key === 'maxDailyLoss') return 'danger'
+      return ''
+    },
     formatNum (v) {
       if (v === null || v === undefined) return '-'
       const n = parseFloat(v)
@@ -528,6 +567,15 @@ export default {
     },
     isNumeric (v) { return typeof v === 'number' || (typeof v === 'string' && !isNaN(parseFloat(v)) && isFinite(v)) },
     paramLabel (key) {
+      if (this.isMartingaleBot) {
+        const martingaleLabels = {
+          initialAmount: this.$t('trading-bot.martingale.initialAmountAuto'),
+          priceDropPct: this.$t('trading-bot.martingale.priceDropTrigger'),
+          takeProfitPct: this.$t('trading-bot.martingale.avgEntryTakeProfit'),
+          stopLossPct: this.$t('trading-bot.martingale.avgEntryStopLoss')
+        }
+        if (martingaleLabels[key]) return martingaleLabels[key]
+      }
       const i18nKey = PARAM_LABEL_MAP[key]
       if (i18nKey) return this.$t(i18nKey)
       return key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())
@@ -543,7 +591,7 @@ export default {
       }
       if (key === 'frequency') {
         return {
-          every_bar: 'Every bar',
+          every_bar: this.$t('trading-bot.dca.everyBar'),
           hourly: this.$t('trading-bot.dca.hourly'),
           '4h': '4H',
           daily: this.$t('trading-bot.dca.daily'),
@@ -552,8 +600,14 @@ export default {
           monthly: this.$t('trading-bot.dca.monthly')
         }[val] || String(val)
       }
-      if (val === 'true' || val === 'false') return val === 'true' ? 'Yes' : 'No'
-      if (typeof val === 'boolean') return val ? 'Yes' : 'No'
+      if (val === 'true' || val === 'false') return val === 'true' ? this.$t('trading-bot.common.enabled') : this.$t('trading-bot.common.disabled')
+      if (typeof val === 'boolean') return val ? this.$t('trading-bot.common.enabled') : this.$t('trading-bot.common.disabled')
+      if (['priceDropPct', 'takeProfitPct', 'stopLossPct', 'positionPct', 'dipThreshold'].includes(key)) {
+        return `${this.formatNum(val)}%`
+      }
+      if (['initialAmount', 'amountEach', 'amountPerGrid', 'referencePrice', 'totalBudget'].includes(key)) {
+        return `${this.formatNum(val)} USDT`
+      }
       if (typeof val === 'number') return this.formatNum(val)
       return String(val)
     },

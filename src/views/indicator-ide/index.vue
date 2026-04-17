@@ -2867,9 +2867,26 @@ export default {
 
       this.clearBacktestSignalOverlays({ silent: true })
 
-      // Build sorted kline timestamp array for snap-to-nearest matching
+      // Build sorted kline timestamp array for snap matching
       const klineData = (typeof chartInstance.getDataList === 'function') ? chartInstance.getDataList() : []
       const klineTimestamps = klineData.map(k => k.timestamp)
+
+      // Parse a backend time string as UTC -> epoch millis.
+      // Backend emits '%Y-%m-%d %H:%M' without tz info; values are UTC.
+      const parseBackendTime = (raw) => {
+        if (raw == null) return 0
+        if (typeof raw === 'number') {
+          return raw < 1e10 ? raw * 1000 : raw
+        }
+        let s = String(raw).trim()
+        if (!s) return 0
+        if (!s.includes('T')) s = s.replace(' ', 'T')
+        if (!/:\d{2}$/.test(s) && /T\d{2}:\d{2}$/.test(s)) s += ':00'
+        if (!s.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(s)) s += 'Z'
+        const d = new Date(s)
+        const t = d.getTime()
+        return isNaN(t) ? 0 : t
+      }
 
       for (const trade of trades) {
         const ty = (trade.type || '').toLowerCase()
@@ -2877,30 +2894,27 @@ export default {
         const isSell = ty.startsWith('open_short') || ty === 'sell' || ty === 'close_long'
         if (!isBuy && !isSell) continue
 
-        let timestamp = trade.timestamp || 0
-        if (!timestamp && trade.time) {
-          // Force UTC parsing: backend time strings like '2024-01-15 09:30' are UTC
-          let timeStr = String(trade.time)
-          if (!timeStr.includes('T')) timeStr = timeStr.replace(' ', 'T')
-          if (!timeStr.includes('Z') && !/[+-]\d{2}:?\d{2}$/.test(timeStr)) timeStr += 'Z'
-          const d = new Date(timeStr)
-          if (!isNaN(d.getTime())) timestamp = d.getTime()
-        }
-        if (timestamp < 1e10) timestamp *= 1000
+        // Prefer bar_time (chart-aligned) over time (may be at finer exec TF in MTF mode)
+        let timestamp = parseBackendTime(trade.bar_time || trade.timestamp || trade.time)
 
-        // Snap to nearest K-line bar to avoid sub-bar offset from execution timeframe
-        if (klineTimestamps.length > 0) {
+        // Floor-snap to the K-line bar that CONTAINS this timestamp, not nearest.
+        // This avoids a full-bar offset when an intra-bar trigger (SL/TP) happens
+        // in the second half of the signal bar.
+        if (klineTimestamps.length > 0 && timestamp > 0) {
+          // Binary search for the last bar whose start <= timestamp
           let lo = 0; let hi = klineTimestamps.length - 1
-          while (lo < hi) {
-            const mid = (lo + hi) >> 1
-            if (klineTimestamps[mid] < timestamp) lo = mid + 1
-            else hi = mid
+          if (timestamp < klineTimestamps[0]) {
+            timestamp = klineTimestamps[0]
+          } else if (timestamp >= klineTimestamps[hi]) {
+            timestamp = klineTimestamps[hi]
+          } else {
+            while (lo < hi) {
+              const mid = (lo + hi + 1) >> 1
+              if (klineTimestamps[mid] <= timestamp) lo = mid
+              else hi = mid - 1
+            }
+            timestamp = klineTimestamps[lo]
           }
-          // lo is the first kline >= timestamp; compare with lo-1 to find nearest
-          if (lo > 0 && (timestamp - klineTimestamps[lo - 1]) < (klineTimestamps[lo] - timestamp)) {
-            lo = lo - 1
-          }
-          timestamp = klineTimestamps[lo]
         }
 
         const price = trade.price || 0

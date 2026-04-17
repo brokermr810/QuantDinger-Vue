@@ -58,8 +58,10 @@ def on_init(ctx):
     ctx.param("sp", sp)
     ctx.param("prev_price", anchor)
     ctx.param("anchor_price", anchor)
-    ctx.param("total_spent", 0.0)
-    ctx.log("Grid anchor @ %.2f | buy_pending=%d sell_pending=%d [%.2f ~ %.2f]" % (anchor, len(bp), len(sp), LOWER, UPPER))
+    # 分别追踪多头/空头资金占用,防止单边网格无限开仓爆仓
+    ctx.param("long_exposure", 0.0)
+    ctx.param("short_exposure", 0.0)
+    ctx.log("Grid anchor @ %.6f | buy_pending=%d sell_pending=%d [%.6f ~ %.6f]" % (anchor, len(bp), len(sp), LOWER, UPPER))
 
 def on_bar(ctx, bar):
     price = bar.close
@@ -68,7 +70,8 @@ def on_bar(ctx, bar):
 
     prev_price = ctx.param("prev_price", -1.0)
     anchor = ctx.param("anchor_price", REF_PRICE if REF_PRICE > 0 else (LOWER + UPPER) / 2.0)
-    total_spent = ctx.param("total_spent", 0.0)
+    long_exp = ctx.param("long_exposure", 0.0)
+    short_exp = ctx.param("short_exposure", 0.0)
 
     if prev_price < 0:
         prev_price = anchor
@@ -82,28 +85,49 @@ def on_bar(ctx, bar):
 
     for i, lv in enumerate(LEVELS):
         if prev_price > lv >= price and i in bp:
-            if BUDGET > 0 and total_spent + AMT > BUDGET:
-                ctx.log("Budget cap reached (spent=%.2f + AMT=%.2f > %.2f), skip BUY grid %d" % (total_spent, AMT, BUDGET, i))
-                continue
-            ctx.buy(price=lv, amount=AMT)
-            bp.discard(i)
-            if i + 1 < len(LEVELS):
-                sp.add(i + 1)
-            total_spent += AMT
-            ctx.log("BUY grid %d @ %.4f (price %.4f, spent=%.2f)" % (i, lv, price, total_spent))
+            # BUY: 优先减空头,否则开/加多头(需检查预算)
+            if short_exp > 0:
+                ctx.buy(price=lv, amount=AMT)
+                short_exp = max(0.0, short_exp - AMT)
+                bp.discard(i)
+                if i + 1 < len(LEVELS):
+                    sp.add(i + 1)
+                ctx.log("BUY(cover short) grid %d @ %.6f short_exp=%.2f" % (i, lv, short_exp))
+            else:
+                if BUDGET > 0 and (long_exp + AMT) > BUDGET:
+                    ctx.log("Budget cap reached (long_exp=%.2f + %.2f > %.2f), skip BUY grid %d" % (long_exp, AMT, BUDGET, i))
+                    continue
+                ctx.buy(price=lv, amount=AMT)
+                long_exp += AMT
+                bp.discard(i)
+                if i + 1 < len(LEVELS):
+                    sp.add(i + 1)
+                ctx.log("BUY(open long) grid %d @ %.6f long_exp=%.2f" % (i, lv, long_exp))
         elif prev_price < lv <= price and i in sp:
-            ctx.sell(price=lv, amount=AMT)
-            sp.discard(i)
-            if i - 1 >= 0:
-                bp.add(i - 1)
-            if total_spent >= AMT:
-                total_spent -= AMT
-            ctx.log("SELL grid %d @ %.4f (price %.4f, spent=%.2f)" % (i, lv, price, total_spent))
+            # SELL: 优先减多头,否则开/加空头(需检查预算)
+            if long_exp > 0:
+                ctx.sell(price=lv, amount=AMT)
+                long_exp = max(0.0, long_exp - AMT)
+                sp.discard(i)
+                if i - 1 >= 0:
+                    bp.add(i - 1)
+                ctx.log("SELL(reduce long) grid %d @ %.6f long_exp=%.2f" % (i, lv, long_exp))
+            else:
+                if BUDGET > 0 and (short_exp + AMT) > BUDGET:
+                    ctx.log("Budget cap reached (short_exp=%.2f + %.2f > %.2f), skip SELL grid %d" % (short_exp, AMT, BUDGET, i))
+                    continue
+                ctx.sell(price=lv, amount=AMT)
+                short_exp += AMT
+                sp.discard(i)
+                if i - 1 >= 0:
+                    bp.add(i - 1)
+                ctx.log("SELL(open short) grid %d @ %.6f short_exp=%.2f" % (i, lv, short_exp))
 
     ctx._params["bp"] = list(bp)
     ctx._params["sp"] = list(sp)
     ctx._params["prev_price"] = price
-    ctx._params["total_spent"] = total_spent
+    ctx._params["long_exposure"] = long_exp
+    ctx._params["short_exposure"] = short_exp
 `,
 
   // ========== 马丁格尔 ==========
@@ -115,6 +139,7 @@ MULTIPLIER  = ${params.multiplier}
 MAX_LAYERS  = ${params.maxLayers}
 DROP_PCT    = ${params.priceDropPct} / 100.0
 TP_PCT      = ${params.takeProfitPct} / 100.0
+SL_PCT      = ${(params.stopLossPct || 0)} / 100.0
 DIRECTION   = "${params.direction || 'long'}"
 ORDER_WAIT  = 120
 BUDGET      = ${params._initialCapital || 0}
@@ -177,14 +202,23 @@ def on_bar(ctx, bar):
 
     if DIRECTION == "long":
         tp_hit = avg_price > 0 and price >= avg_price * (1 + TP_PCT)
+        sl_hit = SL_PCT > 0 and avg_price > 0 and price <= avg_price * (1 - SL_PCT)
         add_hit = layer < MAX_LAYERS and last_entry > 0 and price <= last_entry * (1 - DROP_PCT)
     else:
         tp_hit = avg_price > 0 and price <= avg_price * (1 - TP_PCT)
+        sl_hit = SL_PCT > 0 and avg_price > 0 and price >= avg_price * (1 + SL_PCT)
         add_hit = layer < MAX_LAYERS and last_entry > 0 and price >= last_entry * (1 + DROP_PCT)
 
     if tp_hit:
         pnl = (price - avg_price) * qty if DIRECTION == "long" else (avg_price - price) * qty
         ctx.log("TAKE PROFIT @ %.4f, avg=%.4f, PnL=%.2f USDT" % (price, avg_price, pnl))
+        ctx.close_position()
+        _reset_state(ctx)
+        return
+
+    if sl_hit:
+        pnl = (price - avg_price) * qty if DIRECTION == "long" else (avg_price - price) * qty
+        ctx.log("STOP LOSS @ %.4f, avg=%.4f, PnL=%.2f USDT" % (price, avg_price, pnl))
         ctx.close_position()
         _reset_state(ctx)
         return
@@ -306,20 +340,21 @@ def on_bar(ctx, bar):
     const tf = (context && context.timeframe) || '1h'
     const tfMin = TIMEFRAME_MINUTES[tf] || 60
     const freqMin = params.frequency === 'every_bar' ? tfMin : (FREQUENCY_MINUTES[params.frequency] || 1440)
-    const intervalBars = Math.max(1, Math.round(freqMin / tfMin))
 
     return `# ---- DCA (Dollar Cost Averaging) Bot ----
+import time as _time
+
 AMT_EACH       = ${params.amountEach}
 TOTAL_BUDGET   = ${params.totalBudget || 0}
 DIP_BUY        = ${params.dipBuyEnabled ? 'True' : 'False'}
 DIP_THRESHOLD  = ${params.dipThreshold || 5} / 100.0
-INTERVAL_BARS  = ${intervalBars}
+INTERVAL_SEC   = ${freqMin * 60}
 
 def on_init(ctx):
     ctx.param("total_spent", 0.0)
     ctx.param("total_qty", 0.0)
     ctx.param("buy_count", 0)
-    ctx.param("bar_count", 0)
+    ctx.param("last_buy_ts", 0)
     ctx.param("last_buy_price", 0.0)
 
 def on_bar(ctx, bar):
@@ -327,43 +362,58 @@ def on_bar(ctx, bar):
     total_spent = ctx.param("total_spent", 0.0)
     total_qty   = ctx.param("total_qty", 0.0)
     buy_count   = ctx.param("buy_count", 0)
-    bar_count   = ctx.param("bar_count", 0)
+    last_ts     = ctx.param("last_buy_ts", 0)
     last_price  = ctx.param("last_buy_price", 0.0)
     has_pos     = ctx.position and float(ctx.position.get("size", 0)) > 0
+    now         = int(_time.time())
 
-    bar_count += 1
-    ctx._params["bar_count"] = bar_count
+    # 若仓位被外部平掉(手动/止损等),重置累计状态以便下一轮 DCA
+    if buy_count > 0 and total_qty > 0 and not has_pos:
+        ctx.log("DCA position closed externally, resetting stats")
+        total_spent = 0.0
+        total_qty = 0.0
+        buy_count = 0
+        last_ts = 0
+        last_price = 0.0
+        ctx._params["total_spent"] = 0.0
+        ctx._params["total_qty"] = 0.0
+        ctx._params["buy_count"] = 0
+        ctx._params["last_buy_ts"] = 0
+        ctx._params["last_buy_price"] = 0.0
 
     budget_done = TOTAL_BUDGET > 0 and total_spent >= TOTAL_BUDGET
-    if budget_done and not has_pos:
+    if budget_done:
         return
 
-    if not budget_done:
-        if bar_count >= INTERVAL_BARS or buy_count == 0:
-            amount = AMT_EACH
+    # 使用真实时间戳而非 bar 计数,确保 frequency 与 timeframe 脱耦
+    elapsed = now - last_ts
+    due = (buy_count == 0) or (elapsed >= INTERVAL_SEC)
+    if not due:
+        return
 
-            if DIP_BUY and last_price > 0:
-                drop = (last_price - price) / last_price
-                if drop >= DIP_THRESHOLD:
-                    amount = AMT_EACH * 2
-                    ctx.log("DIP detected (%.2f%%), doubling buy" % (drop * 100))
+    amount = AMT_EACH
 
-            if TOTAL_BUDGET > 0:
-                remaining = TOTAL_BUDGET - total_spent
-                if amount > remaining:
-                    amount = remaining
-                if amount <= 0:
-                    amount = 0
+    if DIP_BUY and last_price > 0:
+        drop = (last_price - price) / last_price
+        if drop >= DIP_THRESHOLD:
+            amount = AMT_EACH * 2
+            ctx.log("DIP detected (%.2f%%), doubling buy" % (drop * 100))
 
-            if amount > 0:
-                qty = amount / price if price > 0 else 0
-                ctx.buy(price=price, amount=amount)
-                ctx._params["total_spent"] = total_spent + amount
-                ctx._params["total_qty"] = total_qty + qty
-                ctx._params["buy_count"] = buy_count + 1
-                ctx._params["bar_count"] = 0
-                ctx._params["last_buy_price"] = price
-                ctx.log("DCA #%d: BUY %.2f USDT @ %.6f (total: %.2f)" % (buy_count + 1, amount, price, total_spent + amount))
+    if TOTAL_BUDGET > 0:
+        remaining = TOTAL_BUDGET - total_spent
+        if amount > remaining:
+            amount = remaining
+        if amount <= 0:
+            return
+
+    qty = amount / price if price > 0 else 0
+    ctx.buy(price=price, amount=amount)
+    ctx._params["total_spent"] = total_spent + amount
+    ctx._params["total_qty"] = total_qty + qty
+    ctx._params["buy_count"] = buy_count + 1
+    ctx._params["last_buy_ts"] = now
+    ctx._params["last_buy_price"] = price
+    ctx.log("DCA #%d: BUY %.2f USDT @ %.6f (total: %.2f)" % (buy_count + 1, amount, price, total_spent + amount))
 `
   }
 }

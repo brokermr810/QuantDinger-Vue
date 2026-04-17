@@ -111,7 +111,7 @@
             />
           </a-form-model-item>
 
-          <a-form-model-item :label="$t('trading-bot.wizard.initialCapital')" prop="initialCapital">
+          <a-form-model-item :label="capitalLabel" prop="initialCapital">
             <a-input-number
               v-model="baseForm.initialCapital"
               :min="10"
@@ -119,6 +119,7 @@
               style="width: 100%"
               placeholder="USDT"
             />
+            <div v-if="botType === 'martingale'" class="form-hint">{{ martingaleBudgetHint }}</div>
           </a-form-model-item>
 
         </a-form-model>
@@ -146,46 +147,52 @@
           :label-col="{ span: 8 }"
           :wrapper-col="{ span: 14 }"
         >
-          <a-form-model-item :label="$t('trading-bot.risk.stopLossPct')">
-            <a-input-number
-              v-model="riskForm.stopLossPct"
-              :min="0"
-              :max="100"
-              :step="1"
-              style="width: 100%"
-              :formatter="v => `${v}%`"
-              :parser="v => v.replace('%', '')"
+          <template v-if="botType !== 'martingale'">
+            <a-form-model-item :label="$t('trading-bot.risk.stopLossPct')">
+              <a-input-number
+                v-model="riskForm.stopLossPct"
+                :min="0"
+                :max="100"
+                :step="1"
+                style="width: 100%"
+                :formatter="v => `${v}%`"
+                :parser="v => v.replace('%', '')"
+              />
+              <div class="form-hint">{{ stopLossHint }}</div>
+            </a-form-model-item>
+            <a-form-model-item :label="$t('trading-bot.risk.takeProfitPct')">
+              <a-input-number
+                v-model="riskForm.takeProfitPct"
+                :min="0"
+                :max="1000"
+                :step="1"
+                style="width: 100%"
+                :formatter="v => `${v}%`"
+                :parser="v => v.replace('%', '')"
+              />
+              <div class="form-hint">{{ takeProfitHint }}</div>
+            </a-form-model-item>
+            <a-form-model-item :label="$t('trading-bot.risk.maxPosition')">
+              <a-input-number
+                v-model="riskForm.maxPosition"
+                :min="0"
+                :step="100"
+                style="width: 100%"
+                placeholder="USDT"
+              />
+              <div class="form-hint">{{ maxPositionHint }}</div>
+            </a-form-model-item>
+          </template>
+          <template v-else>
+            <a-alert
+              type="info"
+              show-icon
+              style="margin-bottom: 16px;"
+              :message="martingaleRiskTitle"
+              :description="martingaleRiskDesc"
             />
-            <div class="form-hint">{{ stopLossHint }}</div>
-          </a-form-model-item>
-          <a-form-model-item v-if="botType !== 'martingale'" :label="$t('trading-bot.risk.takeProfitPct')">
-            <a-input-number
-              v-model="riskForm.takeProfitPct"
-              :min="0"
-              :max="1000"
-              :step="1"
-              style="width: 100%"
-              :formatter="v => `${v}%`"
-              :parser="v => v.replace('%', '')"
-            />
-            <div class="form-hint">{{ takeProfitHint }}</div>
-          </a-form-model-item>
-          <a-form-model-item v-else :label="$t('trading-bot.risk.takeProfitPct')">
-            <span style="color: #8c8c8c; font-size: 13px;">
-              <a-icon type="info-circle" /> {{ martingaleTpNote }}
-            </span>
-          </a-form-model-item>
-          <a-form-model-item :label="$t('trading-bot.risk.maxPosition')">
-            <a-input-number
-              v-model="riskForm.maxPosition"
-              :min="0"
-              :step="100"
-              style="width: 100%"
-              placeholder="USDT"
-            />
-            <div class="form-hint">{{ maxPositionHint }}</div>
-          </a-form-model-item>
-          <a-form-model-item :label="$t('trading-bot.risk.maxDailyLoss')">
+          </template>
+          <a-form-model-item :label="dailyLossLabel">
             <a-input-number
               v-model="riskForm.maxDailyLoss"
               :min="0"
@@ -193,6 +200,7 @@
               style="width: 100%"
               placeholder="USDT"
             />
+            <div class="form-hint">{{ dailyLossHint }}</div>
           </a-form-model-item>
         </a-form-model>
       </div>
@@ -226,7 +234,7 @@
             >
               {{ baseForm.leverage }}x
             </a-descriptions-item>
-            <a-descriptions-item :label="$t('trading-bot.wizard.initialCapital')">
+            <a-descriptions-item :label="capitalLabel">
               ${{ baseForm.initialCapital }}
             </a-descriptions-item>
           </a-descriptions>
@@ -234,29 +242,26 @@
           <h4 style="margin-top: 20px;">{{ $t('trading-bot.wizard.strategyParams') }}</h4>
           <a-descriptions :column="1" bordered size="small">
             <a-descriptions-item
-              v-for="(val, key) in strategyParams"
-              :key="key"
-              :label="key"
+              v-for="item in strategyParamDisplayItems"
+              :key="item.key"
+              :label="item.label"
             >
-              {{ val }}
+              {{ item.value }}
             </a-descriptions-item>
           </a-descriptions>
 
           <h4 style="margin-top: 20px;">{{ $t('trading-bot.wizard.riskParams') }}</h4>
           <a-descriptions :column="1" bordered size="small">
-            <a-descriptions-item :label="$t('trading-bot.risk.stopLossPct')">
+            <a-descriptions-item v-if="botType !== 'martingale'" :label="$t('trading-bot.risk.stopLossPct')">
               {{ riskForm.stopLossPct }}%
             </a-descriptions-item>
             <a-descriptions-item v-if="botType !== 'martingale'" :label="$t('trading-bot.risk.takeProfitPct')">
               {{ riskForm.takeProfitPct }}%
             </a-descriptions-item>
-            <a-descriptions-item v-else :label="$t('trading-bot.risk.takeProfitPct')">
-              {{ martingaleTpNote }}
-            </a-descriptions-item>
-            <a-descriptions-item :label="$t('trading-bot.risk.maxPosition')">
+            <a-descriptions-item v-if="botType !== 'martingale'" :label="$t('trading-bot.risk.maxPosition')">
               ${{ riskForm.maxPosition }}
             </a-descriptions-item>
-            <a-descriptions-item :label="$t('trading-bot.risk.maxDailyLoss')">
+            <a-descriptions-item :label="dailyLossLabel">
               ${{ riskForm.maxDailyLoss }}
             </a-descriptions-item>
           </a-descriptions>
@@ -397,10 +402,19 @@ export default {
     isZhLocale () {
       return String(this.$i18n?.locale || '').toLowerCase().startsWith('zh')
     },
+    capitalLabel () {
+      return this.botType === 'martingale'
+        ? (this.isZhLocale ? '总投入金额' : 'Total Budget')
+        : this.$t('trading-bot.wizard.initialCapital')
+    },
+    martingaleBudgetHint () {
+      return this.isZhLocale
+        ? '这里表示这一轮马丁允许投入的总预算，首单金额会自动反推。'
+        : 'This is the total budget for one martingale cycle. First order size is derived automatically.'
+    },
     stopLossHint () {
       const hints = {
         grid: { zh: '价格偏离入场价超过此比例时，服务端强制平仓止损。设0为不启用。', en: 'Server closes position when price deviates beyond this % from entry. Set 0 to disable.' },
-        martingale: { zh: '当持仓亏损超过此比例时强制平仓（基于保证金比例）。100%即不触发。', en: 'Force close when loss exceeds this % of margin. 100% effectively disables it.' },
         trend: { zh: '当均线信号来得太慢时，此止损作为安全网强制平仓。', en: 'Safety net: force close when loss exceeds this %, even if MA has not crossed back.' },
         dca: { zh: '当持仓亏损超过此比例时平仓止损，保护已定投的本金。', en: 'Close position when unrealized loss exceeds this %, protecting DCA capital.' }
       }
@@ -415,6 +429,24 @@ export default {
       }
       const h = hints[this.botType] || hints.grid
       return this.isZhLocale ? h.zh : h.en
+    },
+    martingaleRiskTitle () {
+      return this.isZhLocale ? '高级风控' : 'Advanced Risk Control'
+    },
+    martingaleRiskDesc () {
+      return this.isZhLocale
+        ? '马丁的止盈、止损和最大总投入都在“策略参数”里定义。这里仅保留“单日最大亏损”作为整天维度的保险丝。'
+        : 'Martingale take profit, stop loss, and total budget are all defined in Strategy Params. Only daily max loss remains here as a circuit breaker.'
+    },
+    dailyLossLabel () {
+      return this.botType === 'martingale'
+        ? (this.isZhLocale ? '单日最大亏损（高级）' : 'Daily Max Loss (Advanced)')
+        : this.$t('trading-bot.risk.maxDailyLoss')
+    },
+    dailyLossHint () {
+      return this.isZhLocale
+        ? '限制机器人当天累计已实现亏损，不等同于单轮仓位止损。设 0 为不启用。'
+        : 'Caps the bot daily realized loss. This is not the same as per-cycle stop loss. Set 0 to disable.'
     },
     martingaleTpNote () {
       return this.isZhLocale
@@ -431,12 +463,23 @@ export default {
       const cred = this.credentials.find(c => c.id === this.baseForm.credentialId)
       if (!cred) return '-'
       return `${cred.name || cred.exchange_id} (${cred.exchange_id})`
+    },
+    strategyParamDisplayItems () {
+      return Object.keys(this.strategyParams || {})
+        .filter(key => this.shouldShowStrategyParam(key))
+        .map(key => ({
+          key,
+          label: this.getStrategyParamLabel(key),
+          value: this.formatStrategyParamValue(key, this.strategyParams[key])
+        }))
     }
   },
   watch: {
     'baseForm.initialCapital' (val) {
       if (!val || val <= 0) return
-      this.riskForm.maxPosition = val
+      if (this.botType !== 'martingale') {
+        this.riskForm.maxPosition = val
+      }
       this.riskForm.maxDailyLoss = Math.round(val * 0.1)
     }
   },
@@ -449,6 +492,109 @@ export default {
     }
   },
   methods: {
+    shouldShowStrategyParam (key) {
+      if (key === 'referencePrice') return this.botType === 'grid'
+      return !String(key || '').startsWith('_')
+    },
+    fallbackLabel (zh, en) {
+      return this.isZhLocale ? zh : en
+    },
+    getStrategyParamLabel (key) {
+      const map = {
+        upperPrice: this.$t('trading-bot.grid.upperPrice'),
+        lowerPrice: this.$t('trading-bot.grid.lowerPrice'),
+        gridCount: this.$t('trading-bot.grid.gridCount'),
+        amountPerGrid: this.$t('trading-bot.grid.amountPerGrid'),
+        gridMode: this.$t('trading-bot.grid.mode'),
+        gridDirection: this.$t('trading-bot.grid.direction'),
+        orderMode: this.$t('trading-bot.grid.orderType'),
+        referencePrice: this.fallbackLabel('锚定参考价', 'Anchor Reference Price'),
+        initialAmount: this.fallbackLabel('首单金额（自动计算）', 'First Order Amount (Auto)'),
+        multiplier: this.$t('trading-bot.martingale.multiplier'),
+        maxLayers: this.$t('trading-bot.martingale.maxLayers'),
+        priceDropPct: this.fallbackLabel('加仓触发跌幅', 'Add-on Trigger Move %'),
+        takeProfitPct: this.fallbackLabel('相对持仓均价止盈%', 'Take Profit vs Avg Entry %'),
+        stopLossPct: this.fallbackLabel('相对持仓均价止损%', 'Stop Loss vs Avg Entry %'),
+        direction: this.$t(`trading-bot.${this.botType}.direction`),
+        maPeriod: this.$t('trading-bot.trend.maPeriod'),
+        maType: this.$t('trading-bot.trend.maType'),
+        confirmBars: this.$t('trading-bot.trend.confirmBars'),
+        positionPct: this.$t('trading-bot.trend.positionPct'),
+        amountEach: this.$t('trading-bot.dca.amountEach'),
+        frequency: this.$t('trading-bot.dca.frequency'),
+        totalBudget: this.$t('trading-bot.dca.totalBudget'),
+        dipBuyEnabled: this.$t('trading-bot.dca.dipBuy'),
+        dipThreshold: this.$t('trading-bot.dca.dipThreshold')
+      }
+      return map[key] || key
+    },
+    formatStrategyParamValue (key, value) {
+      if (value == null || value === '') return '-'
+      if (key === 'direction') {
+        const maps = {
+          martingale: {
+            long: this.$t('trading-bot.martingale.long'),
+            short: this.$t('trading-bot.martingale.short')
+          },
+          trend: {
+            long: this.$t('trading-bot.trend.longOnly'),
+            short: this.$t('trading-bot.trend.shortOnly'),
+            both: this.$t('trading-bot.trend.bothSides')
+          }
+        }
+        return (maps[this.botType] || {})[value] || value
+      }
+      if (key === 'gridDirection') {
+        const map = {
+          neutral: this.$t('trading-bot.grid.neutral'),
+          long: this.$t('trading-bot.grid.long'),
+          short: this.$t('trading-bot.grid.short')
+        }
+        return map[value] || value
+      }
+      if (key === 'gridMode') {
+        const map = {
+          arithmetic: this.$t('trading-bot.grid.arithmetic'),
+          geometric: this.$t('trading-bot.grid.geometric')
+        }
+        return map[value] || value
+      }
+      if (key === 'orderMode') {
+        const map = {
+          maker: this.$t('trading-bot.grid.limitOrder'),
+          market: this.$t('trading-bot.grid.marketOrder')
+        }
+        return map[value] || value
+      }
+      if (key === 'frequency') {
+        const map = {
+          every_bar: this.fallbackLabel('每根K线', 'Every Bar'),
+          hourly: this.$t('trading-bot.dca.hourly'),
+          '4h': '4H',
+          daily: this.$t('trading-bot.dca.daily'),
+          weekly: this.$t('trading-bot.dca.weekly'),
+          biweekly: this.$t('trading-bot.dca.biweekly'),
+          monthly: this.$t('trading-bot.dca.monthly')
+        }
+        return map[value] || value
+      }
+      if (key === 'dipBuyEnabled') {
+        return value ? this.fallbackLabel('开启', 'Enabled') : this.fallbackLabel('关闭', 'Disabled')
+      }
+      if (['priceDropPct', 'takeProfitPct', 'stopLossPct', 'dipThreshold', 'positionPct'].includes(key)) {
+        return `${value}%`
+      }
+      if ([
+        'amountPerGrid',
+        'referencePrice',
+        'initialAmount',
+        'amountEach',
+        'totalBudget'
+      ].includes(key)) {
+        return `$${value}`
+      }
+      return value
+    },
     normalizeStrategyParams (params) {
       const next = { ...(params || {}) }
       if (this.botType === 'trend') {
@@ -486,9 +632,13 @@ export default {
       if (tc.bot_params && typeof tc.bot_params === 'object') {
         this.strategyParams = this.normalizeStrategyParams({ ...tc.bot_params })
       }
-      this.riskForm.stopLossPct = tc.stop_loss_pct ?? 10
-      this.riskForm.takeProfitPct = tc.take_profit_pct ?? 20
-      this.riskForm.maxPosition = tc.max_position ?? 5000
+      this.riskForm.stopLossPct = this.botType === 'martingale'
+        ? (tc.bot_params?.stopLossPct ?? 12)
+        : (tc.stop_loss_pct ?? 10)
+      this.riskForm.takeProfitPct = this.botType === 'martingale'
+        ? (tc.bot_params?.takeProfitPct ?? 2)
+        : (tc.take_profit_pct ?? 20)
+      this.riskForm.maxPosition = this.botType === 'martingale' ? 0 : (tc.max_position ?? 5000)
       this.riskForm.maxDailyLoss = tc.max_daily_loss ?? 500
     },
     applyAiPreset () {
@@ -506,11 +656,19 @@ export default {
         delete params.amountPerGrid
         delete params.initialAmount
         delete params.totalBudget
+        if (this.botType === 'martingale') {
+          if (params.takeProfitPct == null && (p.riskConfig || {}).takeProfitPct != null) {
+            params.takeProfitPct = (p.riskConfig || {}).takeProfitPct
+          }
+          if (params.stopLossPct == null && (p.riskConfig || {}).stopLossPct != null) {
+            params.stopLossPct = (p.riskConfig || {}).stopLossPct
+          }
+        }
         this.strategyParams = params
       }
-      this.riskForm.stopLossPct = (p.riskConfig || {}).stopLossPct ?? 10
-      this.riskForm.takeProfitPct = (p.riskConfig || {}).takeProfitPct ?? 20
-      this.riskForm.maxPosition = null
+      this.riskForm.stopLossPct = this.botType === 'martingale' ? 0 : ((p.riskConfig || {}).stopLossPct ?? 10)
+      this.riskForm.takeProfitPct = this.botType === 'martingale' ? 0 : ((p.riskConfig || {}).takeProfitPct ?? 20)
+      this.riskForm.maxPosition = this.botType === 'martingale' ? 0 : null
       this.riskForm.maxDailyLoss = null
     },
     filterSymbol (input, option) {
@@ -622,13 +780,17 @@ export default {
           leverage: leverage,
           trade_direction: tradeDirection,
           initial_capital: this.baseForm.initialCapital,
-          stop_loss_pct: this.riskForm.stopLossPct,
+          stop_loss_pct: this.botType === 'martingale' ? 0 : this.riskForm.stopLossPct,
           take_profit_pct: this.botType === 'martingale' ? 0 : this.riskForm.takeProfitPct,
-          max_position: this.riskForm.maxPosition,
+          max_position: this.botType === 'martingale' ? 0 : this.riskForm.maxPosition,
           max_daily_loss: this.riskForm.maxDailyLoss,
           bot_type: this.botType,
           bot_params: strategyParams,
-          order_mode: strategyParams.orderMode || 'maker',
+          // 马丁/趋势机器人依赖即时成交触发加仓/平仓,强制市价;
+          // 网格/DCA 保留用户选择(默认 maker 更省手续费)
+          order_mode: (this.botType === 'martingale' || this.botType === 'trend')
+            ? 'market'
+            : (strategyParams.orderMode || 'maker'),
           entry_trigger_mode: 'immediate'
         },
         notification_config: {

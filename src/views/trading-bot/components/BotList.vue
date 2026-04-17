@@ -39,6 +39,9 @@
               <span class="meta-text" v-if="item.trading_config && item.trading_config.symbol">{{ item.trading_config.symbol }}</span>
               <span class="meta-text" v-if="item.exchange_config && item.exchange_config.exchange_id">{{ getExchangeName(item.exchange_config.exchange_id) }}</span>
             </div>
+            <div class="bot-submeta" v-if="budgetText(item)">
+              <span class="meta-text">{{ budgetLabel(item) }}: {{ budgetText(item) }}</span>
+            </div>
           </div>
           <div class="bot-pnl" :class="{ positive: (item.unrealized_pnl || 0) >= 0, negative: (item.unrealized_pnl || 0) < 0 }">
             {{ (item.unrealized_pnl || 0) >= 0 ? '+' : '' }}${{ (item.unrealized_pnl || 0).toFixed(2) }}
@@ -149,6 +152,20 @@ export default {
         creating: this.$t('trading-bot.status.creating')
       }
       return map[s] || s || this.$t('trading-bot.status.stopped')
+    },
+    budgetLabel (item) {
+      const labelKey = item?.bot_display?.capital_label_key
+      if (labelKey) return this.$t(labelKey)
+      return item?.bot_type === 'martingale'
+        ? this.$t('trading-bot.martingale.totalBudget')
+        : this.$t('trading-bot.wizard.initialCapital')
+    },
+    budgetText (item) {
+      const val = item?.trading_config?.initial_capital
+      if (val === null || val === undefined || val === '') return ''
+      const n = Number(val)
+      if (!Number.isFinite(n)) return ''
+      return `${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`
     }
   }
 }
@@ -236,6 +253,15 @@ export default {
     align-items: center;
     gap: 6px;
     margin-top: 3px;
+
+    .meta-text {
+      font-size: 12px;
+      color: #8c8c8c;
+    }
+  }
+
+  .bot-submeta {
+    margin-top: 2px;
 
     .meta-text {
       font-size: 12px;

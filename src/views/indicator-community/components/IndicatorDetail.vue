@@ -119,9 +119,27 @@
             <a-button v-if="detail.is_own" disabled>
               {{ $t('community.myIndicator') }}
             </a-button>
-            <a-button v-else-if="detail.is_purchased" type="primary" @click="goToUse">
-              <a-icon type="code" /> {{ $t('community.useNow') }}
-            </a-button>
+            <template v-else-if="detail.is_purchased">
+              <a-tooltip :title="$t('community.syncCodeTooltip')" placement="top">
+                <a-badge :dot="!!detail.has_update" :offset="[-4, 4]">
+                  <a-button
+                    :loading="syncing"
+                    @click="handleSyncCode"
+                  >
+                    <a-icon type="sync" />
+                    {{ syncing ? $t('community.syncingCode') : $t('community.syncCode') }}
+                    <a-tag
+                      v-if="detail.has_update && !syncing"
+                      color="orange"
+                      class="update-tag"
+                    >{{ $t('community.hasUpdate') }}</a-tag>
+                  </a-button>
+                </a-badge>
+              </a-tooltip>
+              <a-button type="primary" @click="goToUse">
+                <a-icon type="code" /> {{ $t('community.useNow') }}
+              </a-button>
+            </template>
             <a-button
               v-else
               type="primary"
@@ -165,6 +183,7 @@ export default {
     return {
       loading: false,
       purchasing: false,
+      syncing: false,
       commentsLoading: false,
       detail: null,
       performance: null,
@@ -379,6 +398,52 @@ export default {
       this.$router.push('/indicator-ide')
     },
 
+    handleSyncCode () {
+      if (this.syncing) return
+      this.$confirm({
+        title: this.$t('community.syncCodeConfirmTitle'),
+        content: this.$t('community.syncCodeConfirmContent'),
+        okText: this.$t('community.syncCode'),
+        cancelText: this.$t('community.cancelEdit'),
+        onOk: () => this.doSyncCode()
+      })
+    },
+
+    async doSyncCode () {
+      this.syncing = true
+      try {
+        const res = await request({
+          url: `/api/community/indicators/${this.indicatorId}/sync`,
+          method: 'post'
+        })
+        if (res.code === 1) {
+          // Backend returns `already_latest` when nothing had to be copied.
+          if (res.msg === 'already_latest') {
+            this.$message.info(this.$t('community.already_latest'))
+          } else {
+            this.$message.success(this.$t('community.syncCodeSuccess'))
+          }
+          // Refresh detail so the "Update available" badge clears immediately.
+          this.loadDetail()
+          this.$emit('synced')
+        } else {
+          const msgKey = `community.${res.msg}`
+          this.$message.error(this.$te(msgKey) ? this.$t(msgKey) : (res.msg || this.$t('community.syncCodeFailed')))
+        }
+      } catch (e) {
+        // request interceptor may surface backend msg directly — fall back to a generic one
+        const backendMsg = e && e.response && e.response.data && e.response.data.msg
+        const msgKey = backendMsg ? `community.${backendMsg}` : ''
+        if (msgKey && this.$te(msgKey)) {
+          this.$message.error(this.$t(msgKey))
+        } else {
+          this.$message.error(this.$t('community.syncCodeFailed'))
+        }
+      } finally {
+        this.syncing = false
+      }
+    },
+
     formatDate (dateStr) {
       if (!dateStr) return '-'
       const d = new Date(dateStr)
@@ -572,6 +637,19 @@ export default {
     .action-buttons {
       display: flex;
       gap: 12px;
+      align-items: center;
+
+      .update-tag {
+        margin-left: 6px;
+        margin-right: 0;
+        font-size: 11px;
+        line-height: 18px;
+        padding: 0 6px;
+      }
+
+      /deep/ .ant-badge {
+        display: inline-block;
+      }
     }
   }
 }
@@ -629,6 +707,19 @@ body.dark,
         background: #262626;
         border-color: #434343;
         color: rgba(255, 255, 255, 0.72);
+
+        &:hover,
+        &:focus {
+          background: #2f2f2f;
+          border-color: #5a5a5a;
+          color: rgba(255, 255, 255, 0.92);
+        }
+      }
+
+      .update-tag {
+        background: rgba(250, 140, 22, 0.15);
+        border-color: rgba(250, 140, 22, 0.4);
+        color: #fa8c16;
       }
     }
 
