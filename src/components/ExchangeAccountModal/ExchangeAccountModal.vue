@@ -408,6 +408,18 @@ export default {
       if (p.exchange_id === 'mt5' && p.mt5_login != null && p.mt5_login !== '') {
         p.mt5_login = String(p.mt5_login)
       }
+      // validateFields(部分字段名) 返回的 values 往往只含参与校验的项，不含「模拟盘/测试网」勾选，
+      // 会导致 test-connection 与保存凭证时永远不带 enable_demo_trading。
+      if (this.addExchangeType === 'crypto' && this.exchangeForm) {
+        try {
+          const demo = this.exchangeForm.getFieldValue('enable_demo_trading')
+          if (demo !== undefined && demo !== null) {
+            p.enable_demo_trading = !!demo
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
       return p
     },
     async fetchEgressIp () {
