@@ -151,4 +151,7 @@ test('strategy AI generation failures surface and localize the nested validation
   assert.match(page, /const message = this\.localizeStrategyAiError\(e\)/)
   assert.equal(strategyV2Messages['en-US']['strategyV2.generationInvalid'], 'The generated strategy did not pass validation.')
   assert.equal(strategyV2Messages['zh-CN']['strategyV2.generationInvalid'], 'AI 生成的策略未通过校验。')
+  assert.equal(strategyV2Messages['zh-CN']['strategyV2.aiDirectionModeMismatch'], '用户要求的交易方向与生成策略不一致。')
+  assert.equal(strategyV2Messages['zh-CN']['strategyV2.aiBidirectionalOrderLegsRequired'], '多空双向策略必须同时实现多头腿和空头腿的下单逻辑。')
+  assert.equal(strategyV2Messages['zh-CN']['strategyV2.aiProtectionImplementationRequired'], '用户要求的止损或止盈尚未通过可执行保护规则实现。')
 })
