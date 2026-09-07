@@ -173,6 +173,7 @@ const locale = {
   'strategyV2.leverageNotAllowed': 'This strategy source does not allow leverage.',
   'strategyV2.leverageCryptoSwapOnly': 'Leverage is available only for crypto perpetual contracts whose strategy source explicitly allows it.',
   'strategyV2.compileFailed': 'The strategy contract could not be compiled.',
+  'strategyV2.generationInvalid': 'The generated strategy did not pass validation.',
   'strategyV2.sourceContractRequired': 'The selected source cannot be compiled by the current strategy engine.',
   'strategyV2.apiBadge': 'Current engine',
   'strategyV2.executionAccount': 'Execution account',
@@ -753,6 +754,7 @@ const zhCN = {
   'strategyV2.leverageNotAllowed': '该策略源码未声明允许使用杠杆。',
   'strategyV2.leverageCryptoSwapOnly': '只有策略源码明确允许杠杆的加密货币永续合约，才可由用户开启并调整杠杆倍数。',
   'strategyV2.compileFailed': '策略运行契约编译失败。',
+  'strategyV2.generationInvalid': 'AI 生成的策略未通过校验。',
   'strategyV2.sourceContractRequired': '当前策略引擎无法编译所选源码，请检查源码后重试。',
   'strategyV2.apiBadge': '当前引擎',
   'strategyV2.executionAccount': '执行账户',
@@ -827,6 +829,7 @@ const zhCN = {
 
 const zhTW = {
   ...zhCN,
+  'strategyV2.generationInvalid': 'AI 產生的策略未通過驗證。',
   'strategyV2.backtest.gridMatchedEntry': '網格配對進場價',
   'strategyV2.backtest.gridMatchedProfit': '單格淨盈虧',
   'strategyV2.backtest.accountAverageEntry': '帳戶持倉均價',

@@ -4,6 +4,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { renderSafeMarkdown } from '../../src/utils/safeMarkdown.js'
+import strategyV2Messages from '../../src/locales/lang/strategy-v2.js'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8')
@@ -139,4 +140,15 @@ test('strategy candidate status messages are localized for current and historica
   assert.match(backendRoute, /_request_lang\(\)/)
   assert.match(backendRoute, /_strategy_ai_text\(STRATEGY_CANDIDATE_MESSAGE_KEY, lang\)/)
   assert.match(workspace, /summary\["message_key"\]/)
+})
+
+test('strategy AI generation failures surface and localize the nested validation error', () => {
+  const page = read('src/views/strategy-ide/index.vue')
+
+  assert.match(page, /localizeStrategyAiError \(error\)/)
+  assert.match(page, /details\.error/)
+  assert.match(page, /this\.\$t\(key\)/)
+  assert.match(page, /const message = this\.localizeStrategyAiError\(e\)/)
+  assert.equal(strategyV2Messages['en-US']['strategyV2.generationInvalid'], 'The generated strategy did not pass validation.')
+  assert.equal(strategyV2Messages['zh-CN']['strategyV2.generationInvalid'], 'AI 生成的策略未通过校验。')
 })

@@ -1010,6 +1010,29 @@ export default {
         : rawContent
       return renderSafeMarkdown(localizedContent)
     },
+    localizeStrategyAiError (error) {
+      const envelope = error && error.response && error.response.data
+      const details = envelope && envelope.data && typeof envelope.data === 'object'
+        ? envelope.data
+        : {}
+      const raw = String(
+        details.error ||
+        (error && (error.backendMessage || error.message)) ||
+        this.aiWorkspaceText.sendFailed
+      ).trim()
+      const separator = raw.indexOf(':')
+      const key = raw.startsWith('strategyV2.')
+        ? (separator === -1 ? raw : raw.slice(0, separator))
+        : ''
+      if (key) {
+        const localized = String(this.$t(key) || '')
+        if (localized && localized !== key) {
+          const detail = separator === -1 ? '' : raw.slice(separator + 1).trim()
+          return detail ? `${localized} (${detail})` : localized
+        }
+      }
+      return raw || this.aiWorkspaceText.sendFailed
+    },
     toggleStrategyAiPanel () {
       this.aiPanelExpanded = !this.aiPanelExpanded
       if (this.aiPanelExpanded) {
@@ -1167,7 +1190,7 @@ export default {
         this.aiPanelExpanded = true
         this.$nextTick(this.scrollStrategyAiConversation)
       } catch (e) {
-        const message = e.backendMessage || e.message || this.aiWorkspaceText.sendFailed
+        const message = this.localizeStrategyAiError(e)
         this.aiMessages.push({ role: 'assistant', content: message, message_type: 'discussion', localId: `strategy-error-${Date.now()}` })
         this.$message.error(message)
         this.$nextTick(this.scrollStrategyAiConversation)
